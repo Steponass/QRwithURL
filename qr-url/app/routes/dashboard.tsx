@@ -1,63 +1,44 @@
 /**
  * Dashboard route — the main authenticated user page.
  *
- * This route is protected: the loader checks if the user is signed in.
- * If not, the component renders <RedirectToSignIn /> which sends the
- * user to Clerk's hosted Account Portal sign-in page.
- *
- * The loader also queries D1 for the user's subdomain. If the user
- * is new (first visit after signup), they won't have a row in the
- * users table yet, and subdomain will be null. That's fine — they
- * chose to skip subdomain setup, so we just show a prompt.
+ * Loader: fetches subdomain, URL count, and all user URLs from D1.
+ * Action: handles subdomain set/edit and URL deletion via "intent" field.
+ * Component: renders subdomain picker, URL list, and create link.
  */
 
 import { getAuth } from "@clerk/react-router/ssr.server";
 import { useUser, RedirectToSignIn } from "@clerk/react-router";
+import { data } from "react-router";
 import type { Route } from "./+types/dashboard";
+import { SubdomainPicker } from "~/components/Subdomain-picker";
+import { UrlList } from "~/components/Url-list";
+import {
+  validateSubdomainFormat,
+  cleanSubdomain,
+} from "~/lib/subdomain-validation";
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+const MAX_URLS_PER_USER = 10;
 
 // ---------------------------------------------------------------------------
 // Loader (server-side)
 // ---------------------------------------------------------------------------
 
-/**
- * What getAuth returns (the parts we use):
- *   userId   — Clerk's unique user ID string, or null if not signed in
- *   sessionId — Current session ID
- *   getToken  — Function to get a session JWT (for calling external APIs)
- *
- * We only need userId here: to verify they're signed in and to look
- * up their subdomain in D1.
- */
 export async function loader(args: Route.LoaderArgs) {
   const { userId } = await getAuth(args);
 
-  /**
-   * If not signed in, we DON'T redirect server-side. Why?
-   *
-   * We're using Clerk's hosted Account Portal for sign-in, which
-   * lives on Clerk's domain (not ours). We don't have a /sign-in
-   * route in our app. The <RedirectToSignIn /> component on the
-   * client side knows the correct Account Portal URL automatically.
-   *
-   * We return authenticated: false and let the component handle it.
-   * This adds one extra round trip compared to a server redirect,
-   * but it's the correct approach for hosted sign-in pages.
-   */
   if (!userId) {
     return {
       authenticated: false as const,
       subdomain: null,
       urlCount: 0,
+      urls: [],
     };
   }
 
-  /**
-   * Query D1 for this user's subdomain.
-   *
-   * If the user just signed up and hasn't picked a subdomain yet,
-   * this returns null (no row in users table). That's expected —
-   * we let them skip subdomain selection.
-   */
   const db = args.context.cloudflare.env.qr_url_db;
 
   const userRow = await db
@@ -66,19 +47,192 @@ export async function loader(args: Route.LoaderArgs) {
     .first<{ subdomain: string }>();
 
   /**
-   * Count how many URLs this user has created.
-   * We'll use this to show a simple stat on the dashboard.
+   * Fetch all URLs for this user, newest first.
+   * With a 10-URL limit, there's no need for pagination.
+   * We select the fields needed by the UrlListItem component.
    */
-  const urlCountRow = await db
-    .prepare("SELECT COUNT(*) as count FROM urls WHERE user_id = ?")
+  const urlRows = await db
+    .prepare(
+      `SELECT id, shortcode, original_url, subdomain, created_at
+       FROM urls
+       WHERE user_id = ?
+       ORDER BY created_at DESC`
+    )
     .bind(userId)
-    .first<{ count: number }>();
+    .all<{
+      id: number;
+      shortcode: string;
+      original_url: string;
+      subdomain: string | null;
+      created_at: string;
+    }>();
+
+  const urls = urlRows.results ?? [];
 
   return {
     authenticated: true as const,
     subdomain: userRow?.subdomain ?? null,
-    urlCount: urlCountRow?.count ?? 0,
+    urlCount: urls.length,
+    urls,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Action (server-side)
+// ---------------------------------------------------------------------------
+
+/**
+ * Actions are dispatched by the "intent" field in the form data.
+ *
+ * Current intents:
+ *   - "set-subdomain" — claim or change a subdomain
+ *   - "delete-url"    — delete a URL the user owns
+ */
+export async function action(args: Route.ActionArgs) {
+  const { userId } = await getAuth(args);
+
+  if (!userId) {
+    return data(
+      { intent: "unknown", success: false, error: "Not authenticated." },
+      { status: 401 }
+    );
+  }
+
+  const formData = await args.request.formData();
+  const intent = formData.get("intent") as string;
+
+  if (intent === "set-subdomain") {
+    return handleSetSubdomain(args, userId, formData);
+  }
+
+  if (intent === "delete-url") {
+    return handleDeleteUrl(args, userId, formData);
+  }
+
+  return data(
+    { intent: "unknown", success: false, error: "Unknown action." },
+    { status: 400 }
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Action handlers
+// ---------------------------------------------------------------------------
+
+/**
+ * Handles the "set-subdomain" intent.
+ * Validates format, checks uniqueness, upserts into users table.
+ */
+async function handleSetSubdomain(
+  args: Route.ActionArgs,
+  userId: string,
+  formData: FormData
+) {
+  const rawSubdomain = formData.get("subdomain") as string;
+
+  if (!rawSubdomain) {
+    return data(
+      { intent: "set-subdomain", success: false, error: "Subdomain is required." },
+      { status: 400 }
+    );
+  }
+
+  const cleaned = cleanSubdomain(rawSubdomain);
+
+  const validation = validateSubdomainFormat(cleaned);
+
+  if (!validation.isValid) {
+    return data(
+      { intent: "set-subdomain", success: false, error: validation.error },
+      { status: 400 }
+    );
+  }
+
+  const db = args.context.cloudflare.env.qr_url_db;
+
+  const existingRow = await db
+    .prepare(
+      "SELECT clerk_user_id FROM users WHERE subdomain = ? AND clerk_user_id != ?"
+    )
+    .bind(cleaned, userId)
+    .first<{ clerk_user_id: string }>();
+
+  if (existingRow) {
+    return data(
+      {
+        intent: "set-subdomain",
+        success: false,
+        error: `"${cleaned}" is already taken.`,
+      },
+      { status: 409 }
+    );
+  }
+
+  await db
+    .prepare(
+      `INSERT INTO users (clerk_user_id, subdomain)
+       VALUES (?, ?)
+       ON CONFLICT (clerk_user_id) DO UPDATE SET subdomain = ?`
+    )
+    .bind(userId, cleaned, cleaned)
+    .run();
+
+  return data({ intent: "set-subdomain", success: true });
+}
+
+/**
+ * Handles the "delete-url" intent.
+ *
+ * Verifies that the URL belongs to the requesting user before
+ * deleting. This prevents one user from deleting another user's
+ * URLs by crafting a form submission with a different urlId.
+ *
+ * After deletion, the shortcode becomes available again:
+ *   - Short format: globally available (anyone can claim it)
+ *   - Branded format: available within that subdomain
+ *
+ * The user is warned about this in the confirmation dialog
+ * (see DeleteButton in url-list-item.tsx).
+ */
+async function handleDeleteUrl(
+  args: Route.ActionArgs,
+  userId: string,
+  formData: FormData
+) {
+  const urlId = formData.get("urlId") as string;
+
+  if (!urlId) {
+    return data(
+      { intent: "delete-url", success: false, error: "URL ID is required." },
+      { status: 400 }
+    );
+  }
+
+  const db = args.context.cloudflare.env.qr_url_db;
+
+  /**
+   * DELETE with a WHERE clause on both id and user_id.
+   * If the URL doesn't exist or belongs to someone else,
+   * this simply deletes 0 rows — no error, no data leak.
+   */
+  const result = await db
+    .prepare("DELETE FROM urls WHERE id = ? AND user_id = ?")
+    .bind(Number(urlId), userId)
+    .run();
+
+  /**
+   * result.meta.changes tells us how many rows were deleted.
+   * 0 = URL not found or not owned by this user.
+   * 1 = successfully deleted.
+   */
+  if (result.meta.changes === 0) {
+    return data(
+      { intent: "delete-url", success: false, error: "URL not found." },
+      { status: 404 }
+    );
+  }
+
+  return data({ intent: "delete-url", success: true });
 }
 
 // ---------------------------------------------------------------------------
@@ -86,26 +240,12 @@ export async function loader(args: Route.LoaderArgs) {
 // ---------------------------------------------------------------------------
 
 export default function Dashboard({ loaderData }: Route.ComponentProps) {
-  /**
-   * If the loader determined the user isn't signed in, render
-   * Clerk's <RedirectToSignIn />. This component automatically
-   * redirects to Clerk's hosted Account Portal sign-in page,
-   * with a return URL back to /dashboard after sign-in.
-   */
   if (!loaderData.authenticated) {
     return <RedirectToSignIn />;
   }
 
-  const { subdomain, urlCount } = loaderData;
+  const { subdomain, urlCount, urls } = loaderData;
 
-  /**
-   * useUser() gives us the full Clerk user object on the client side.
-   * This includes name, email, avatar, etc. — all managed by Clerk,
-   * not stored in our database.
-   *
-   * isLoaded is false during the initial client-side hydration while
-   * Clerk fetches the user object. We show a simple loading state.
-   */
   const { isLoaded, user } = useUser();
 
   if (!isLoaded) {
@@ -120,49 +260,13 @@ export default function Dashboard({ loaderData }: Route.ComponentProps) {
         Welcome, {user?.firstName ?? user?.emailAddresses[0]?.emailAddress ?? "there"}!
       </p>
 
-      <SubdomainStatus subdomain={subdomain} />
-      <UrlStats count={urlCount} />
+      <SubdomainPicker currentSubdomain={subdomain} />
+
+      <UrlList
+        urls={urls}
+        urlCount={urlCount}
+        maxUrls={MAX_URLS_PER_USER}
+      />
     </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Sub-components
-// ---------------------------------------------------------------------------
-
-function SubdomainStatus({ subdomain }: { subdomain: string | null }) {
-  if (subdomain) {
-    return (
-      <section style={{ marginTop: "1.5rem" }}>
-        <h2>Your Subdomain</h2>
-        <p>
-          <strong>{subdomain}</strong>.yourdomain.com
-        </p>
-      </section>
-    );
-  }
-
-  return (
-    <section style={{ marginTop: "1.5rem" }}>
-      <h2>Subdomain</h2>
-      <p>You haven't picked a subdomain yet.</p>
-      <p style={{ color: "#666" }}>
-        A subdomain lets you create branded short URLs like{" "}
-        <strong>yourname.yourdomain.com/link</strong>
-      </p>
-      {/* TODO: Phase 3 — subdomain picker form */}
-    </section>
-  );
-}
-
-function UrlStats({ count }: { count: number }) {
-  return (
-    <section style={{ marginTop: "1.5rem" }}>
-      <h2>Your URLs</h2>
-      <p>
-        {count} of 10 URLs created
-      </p>
-      {/* TODO: Phase 3 — URL list and creation form */}
-    </section>
   );
 }

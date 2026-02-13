@@ -1,3 +1,14 @@
+-- Users table: stores subdomain choices for authenticated users.
+-- A row is created when a user first claims a subdomain (not on signup).
+-- subdomain is nullable so that a user row can exist without one,
+-- and UNIQUE so no two users can claim the same subdomain.
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    clerk_user_id TEXT NOT NULL UNIQUE,
+    subdomain TEXT UNIQUE,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- URLs table: stores all short URL mappings
 CREATE TABLE IF NOT EXISTS urls (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
