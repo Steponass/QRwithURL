@@ -21,10 +21,7 @@ import {
   validateSubdomainFormat,
   cleanSubdomain,
 } from "~/lib/subdomain-validation";
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
+import { SITE_DOMAIN } from "~/lib/constants";
 
 interface SubdomainPickerProps {
   currentSubdomain: string | null;
@@ -51,12 +48,12 @@ export function SubdomainPicker({ currentSubdomain }: SubdomainPickerProps) {
   }
 
   return (
-    <section style={{ marginTop: "1.5rem" }}>
+    <section>
       <h2>Subdomain</h2>
       <p>You haven't picked a subdomain yet.</p>
       <p>
         A subdomain lets you create branded short URLs like{" "}
-        <strong>yourname.yourdomain.com/link</strong>
+        <strong>yourname.{SITE_DOMAIN}/link</strong>
       </p>
       <SubdomainForm currentSubdomain={null} />
     </section>
@@ -76,18 +73,17 @@ function SubdomainDisplay({
 
   if (isEditing) {
     return (
-      <section style={{ marginTop: "1.5rem" }}>
+      <section>
         <h2>Edit Subdomain</h2>
-        <p style={{ marginBottom: "0.75rem" }}>
+        <p>
           Existing branded URLs will stay on{" "}
-          <strong>{currentSubdomain}.yourdomain.com</strong> — they won't
+          <strong>{currentSubdomain}.{SITE_DOMAIN}</strong> — they won't
           move to the new subdomain.
         </p>
         <SubdomainForm currentSubdomain={currentSubdomain} />
         <button
           type="button"
           onClick={() => setIsEditing(false)}
-          style={{ marginTop: "0.5rem", cursor: "pointer" }}
         >
           Cancel
         </button>
@@ -96,15 +92,15 @@ function SubdomainDisplay({
   }
 
   return (
-    <section style={{ marginTop: "1.5rem" }}>
+    <section>
       <h2>Your Subdomain</h2>
       <p>
-        <strong>{currentSubdomain}</strong>.yourdomain.com
+        <strong>{currentSubdomain}</strong>.{SITE_DOMAIN}
       </p>
       <button
         type="button"
         onClick={() => setIsEditing(true)}
-        style={{ marginTop: "0.5rem"}}
+        style={{ marginTop: "0.5rem", cursor: "pointer" }}
       >
         Change subdomain
       </button>
@@ -167,21 +163,15 @@ function SubdomainForm({
           placeholder="your-name"
           aria-label="Subdomain"
           aria-invalid={displayedError ? "true" : undefined}
-          disabled={isSubmitting}
-          style={{
-            padding: "0.5rem",
-            fontSize: "1rem",
-            width: "200px",
-          }}
-        />
-        <span style={{ color: "#666" }}>.yourdomain.com</span>
+          disabled={isSubmitting}/>
+        <span>.{SITE_DOMAIN}</span>
         <button type="submit" disabled={isSubmitting} style={{ cursor: "pointer" }}>
           {isSubmitting ? "Saving..." : "Save"}
         </button>
       </div>
 
       {displayedError && (
-        <p style={{ color: "#dc2626", marginTop: "0.5rem" }} role="alert">
+        <p role="alert">
           {displayedError}
         </p>
       )}

@@ -1,6 +1,4 @@
 /**
- * AnonymousShortenForm component.
- *
  * A stripped-down URL shortening form for visitors without an account.
  * Compared to the authenticated form:
  *   - No format selector (always short format)
@@ -19,24 +17,17 @@ import { Form, useNavigation } from "react-router";
 import { Turnstile } from "@marsidev/react-turnstile";
 import { validateUrl } from "~/lib/url-validation";
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
 
 interface AnonymousShortenFormProps {
   turnstileSiteKey: string;
   remaining: number;
 }
 
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
 
-const DISPLAY_DOMAIN = "yourdomain.com";
+import { SITE_DOMAIN } from "~/lib/constants";
 
-// ---------------------------------------------------------------------------
-// Main component
-// ---------------------------------------------------------------------------
+const DISPLAY_DOMAIN = SITE_DOMAIN;
+
 
 export function AnonymousShortenForm({
   turnstileSiteKey,
@@ -85,7 +76,7 @@ export function AnonymousShortenForm({
         <label
           style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}
         >
-          <span style={{ fontWeight: "bold" }}>Paste a long URL</span>
+          <span>Paste a long URL</span>
           <input
             type="text"
             name="originalUrl"
@@ -106,7 +97,7 @@ export function AnonymousShortenForm({
 
         {/* --- Error --- */}
         {clientError && (
-          <p style={{ color: "#dc2626" }} role="alert">
+          <p role="alert">
             {clientError}
           </p>
         )}
@@ -116,11 +107,10 @@ export function AnonymousShortenForm({
           <button
             type="submit"
             disabled={isSubmitting}
-            style={{ cursor: "pointer", padding: "0.5rem 1rem" }}
           >
             {isSubmitting ? "Shortening..." : "Shorten URL"}
           </button>
-          <span style={{ color: "#666", fontSize: "0.875rem" }}>
+          <span>
             {remaining} of 5 free URLs remaining today
           </span>
         </div>
@@ -129,9 +119,9 @@ export function AnonymousShortenForm({
   );
 }
 
-// ---------------------------------------------------------------------------
+// 
 // Success display
-// ---------------------------------------------------------------------------
+//
 
 export function AnonymousUrlCreated({
   fullShortUrl,
@@ -153,9 +143,13 @@ export function AnonymousUrlCreated({
 
   return (
     <div>
-      <p>URL shortened!</p>
+      <p>
+        URL shortened!
+      </p>
 
-      <p>{originalUrl}</p>
+      <p>
+        {originalUrl}
+      </p>
 
       <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
         <code>{fullShortUrl}</code>
@@ -167,12 +161,12 @@ export function AnonymousUrlCreated({
         </button>
       </div>
 
-      <p style={{ fontSize: "0.75rem", color: "#6b7280", marginTop: "0.5rem" }}>
+      <p>
         This link expires in 365 days. Sign up for permanent links.
       </p>
 
       {remaining > 0 && (
-        <p style={{ fontSize: "0.75rem", color: "#6b7280" }}>
+        <p>
           {remaining} free URLs remaining today.
         </p>
       )}
@@ -180,18 +174,17 @@ export function AnonymousUrlCreated({
   );
 }
 
-// ---------------------------------------------------------------------------
+// 
 // Limit reached state
-// ---------------------------------------------------------------------------
+// 
 
 function DailyLimitReached() {
   return (
-    <div
-    >
-      <p style={{ fontWeight: "bold", marginBottom: "0.5rem" }}>
+    <div>
+      <p>
         Daily limit reached
       </p>
-      <p style={{ color: "#6b7280" }}>
+      <p>
         You've used all 5 free URLs for today.
         Sign up for a free account to get 10 permanent URLs with analytics.
       </p>

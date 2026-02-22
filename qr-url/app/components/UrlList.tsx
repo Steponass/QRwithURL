@@ -9,8 +9,8 @@
  */
 
 import { Link } from "react-router";
-import { UrlListItem } from "~/components/Url-list-item";
-import type { UrlRecord } from "~/components/Url-list-item";
+import { UrlListItem } from "~/components/UrlListItem";
+import type { UrlRecord } from "~/components/UrlListItem";
 
 // ---------------------------------------------------------------------------
 // Types

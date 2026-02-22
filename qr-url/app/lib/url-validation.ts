@@ -21,12 +21,16 @@ const MAX_URL_LENGTH = 2048;
 // Public API
 // ---------------------------------------------------------------------------
 
-export interface UrlValidationResult {
-  isValid: boolean;
-  error: string | null;
-  /** The normalized URL (trimmed). Only set when isValid is true. */
-  normalizedUrl: string | null;
-}
+/**
+ * Discriminated union for validation results.
+ *
+ * When isValid is true, normalizedUrl is guaranteed to be a string.
+ * When isValid is false, error is guaranteed to be a string.
+ * TypeScript narrows the type automatically after checking isValid.
+ */
+export type UrlValidationResult =
+  | { isValid: true; error: null; normalizedUrl: string }
+  | { isValid: false; error: string; normalizedUrl: null };
 
 /**
  * Validates a user-provided URL for shortening.

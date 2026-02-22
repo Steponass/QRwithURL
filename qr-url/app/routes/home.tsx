@@ -20,7 +20,7 @@ import type { Route } from "./+types/home";
 import {
   AnonymousShortenForm,
   AnonymousUrlCreated,
-} from "~/components/Anonymous-shorten-form";
+} from "~/components/AnonymousShortenForm";
 import { validateUrl } from "~/lib/url-validation";
 import { generateUniqueShortcode } from "~/lib/shortcode";
 import { verifyTurnstileToken } from "~/lib/turnstile";
@@ -29,12 +29,36 @@ import {
   incrementRateLimit,
   getClientIp,
 } from "~/lib/rate-limit";
+import { SITE_DOMAIN } from "~/lib/constants";
 
 // ---------------------------------------------------------------------------
-// Constants
+// Action result types
 // ---------------------------------------------------------------------------
 
-const SITE_DOMAIN = "yourdomain.com";
+/**
+ * Explicit types for the action's return values.
+ *
+ * React Router infers action data as a union of all data() returns.
+ * Without explicit types, TS can't guarantee that 'remaining' or
+ * 'createdUrl' exist on a given branch. These types let the
+ * component narrow correctly using 'success' as a discriminant.
+ */
+type ActionSuccess = {
+  success: true;
+  createdUrl: {
+    shortcode: string;
+    originalUrl: string;
+    fullShortUrl: string;
+  };
+  remaining: number;
+};
+
+type ActionError = {
+  success: false;
+  error: string;
+};
+
+type ActionResult = ActionSuccess | ActionError;
 
 // ---------------------------------------------------------------------------
 // Meta
@@ -201,35 +225,47 @@ export async function action(args: Route.ActionArgs) {
 export default function Home({ loaderData, actionData }: Route.ComponentProps) {
   const { turnstileSiteKey } = loaderData;
 
-  const hasCreatedUrl =
-    actionData != null && "createdUrl" in actionData && actionData.createdUrl != null;
+  /**
+   * Cast to our explicit union type. React Router's inferred type
+   * is a union of all data() shapes, which TS can't narrow on.
+   * Our ActionResult type uses 'success' as a proper discriminant.
+   */
+  const result = actionData as ActionResult | undefined;
 
-  const hasError =
-    actionData != null && "error" in actionData && actionData.error != null;
-
+  /**
+   * After a successful creation, use the remaining count from
+   * the action response (most up-to-date). Otherwise use the
+   * loader's remaining count.
+   */
   const remaining =
-    hasCreatedUrl && typeof actionData.remaining === "number"
-      ? actionData.remaining
+    result?.success === true
+      ? result.remaining
       : loaderData.remaining;
 
+  /** Helpers to avoid long ternary chains in JSX */
+  const isSuccess = result?.success === true;
+  const isError = result?.success === false;
+
   return (
-    <div>
+    <div style={{ padding: "2rem", maxWidth: "600px", margin: "0 auto" }}>
       <h1>Shorten any URL</h1>
-      <p>
+      <p style={{ color: "#6b7280", marginBottom: "1.5rem" }}>
         Paste a long URL and get a short one. No account needed.
       </p>
 
-      {hasCreatedUrl && (
+      {/* Show success message if URL was just created */}
+      {isSuccess && (
         <AnonymousUrlCreated
-          fullShortUrl={actionData.createdUrl.fullShortUrl}
-          originalUrl={actionData.createdUrl.originalUrl!}
+          fullShortUrl={result.createdUrl.fullShortUrl}
+          originalUrl={result.createdUrl.originalUrl}
           remaining={remaining}
         />
       )}
 
-      {hasError && (
-        <p role="alert">
-          {actionData.error}
+      {/* Show server-side error if action failed */}
+      {isError && (
+        <p style={{ color: "#dc2626", marginBottom: "1rem" }} role="alert">
+          {result.error}
         </p>
       )}
 
@@ -238,7 +274,14 @@ export default function Home({ loaderData, actionData }: Route.ComponentProps) {
         remaining={remaining}
       />
 
-      <p>
+      <p
+        style={{
+          marginTop: "2rem",
+          fontSize: "0.875rem",
+          color: "#9ca3af",
+          textAlign: "center",
+        }}
+      >
         Want custom shortcodes, branded URLs, analytics, and QR codes?{" "}
         <a href="/dashboard" style={{ color: "#2563eb" }}>
           Sign up for free

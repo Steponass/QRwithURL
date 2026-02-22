@@ -1,5 +1,4 @@
 /**
- * UrlListItem component.
  *
  * Displays a single URL entry with:
  *   - Original URL (truncated if long)
@@ -14,11 +13,7 @@
  */
 
 import { useState } from "react";
-import { useFetcher } from "react-router";
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
+import { useFetcher, Link } from "react-router";
 
 /**
  * The URL data shape as it comes from the dashboard loader.
@@ -32,19 +27,15 @@ export interface UrlRecord {
   created_at: string;
 }
 
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
 
 /** TODO: Replace with your actual domain once purchased. */
-const DISPLAY_DOMAIN = "yourdomain.com";
+import { SITE_DOMAIN } from "~/lib/constants";
+
+const DISPLAY_DOMAIN = SITE_DOMAIN;
 
 /** Truncate original URLs longer than this for display. */
 const MAX_DISPLAY_URL_LENGTH = 50;
 
-// ---------------------------------------------------------------------------
-// Main component
-// ---------------------------------------------------------------------------
 
 export function UrlListItem({ url }: { url: UrlRecord }) {
   const fullShortUrl = buildShortUrl(url.shortcode, url.subdomain);
@@ -53,26 +44,12 @@ export function UrlListItem({ url }: { url: UrlRecord }) {
   const formatLabel = url.subdomain ? "branded" : "short";
 
   return (
-    <li
-      style={{
-        padding: "1rem",
-        border: "1px solid #e5e7eb",
-        borderRadius: "8px",
-      }}
-    >
+    <li>
       {/* --- Short URL + Copy --- */}
       <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
         <code style={{ fontSize: "1rem" }}>{fullShortUrl}</code>
         <CopyButton text={fullShortUrl} />
-        <span
-          style={{
-            fontSize: "0.75rem",
-            padding: "0.125rem 0.5rem",
-            borderRadius: "9999px",
-            backgroundColor: url.subdomain ? "#dbeafe" : "#f3f4f6",
-            color: url.subdomain ? "#1d4ed8" : "#6b7280",
-          }}
-        >
+        <span>
           {formatLabel}
         </span>
       </div>
@@ -84,7 +61,7 @@ export function UrlListItem({ url }: { url: UrlRecord }) {
         {truncatedOriginal}
       </p>
 
-      {/* --- Footer: date + delete --- */}
+      {/* --- Footer: date + actions --- */}
       <div
         style={{
           display: "flex",
@@ -93,10 +70,23 @@ export function UrlListItem({ url }: { url: UrlRecord }) {
           marginTop: "0.5rem",
         }}
       >
-        <span style={{ color: "#9ca3af", fontSize: "0.75rem" }}>
+        <span>
           Created {formattedDate}
         </span>
-        <DeleteButton urlId={url.id} shortcode={url.shortcode} />
+        <div style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
+          <Link
+            to={`/dashboard/analytics/${url.id}`}
+            style={{ fontSize: "0.75rem", color: "#2563eb" }}
+          >
+            Analytics
+          </Link>
+          <Link
+            to={`/dashboard/qr/new?urlId=${url.id}`}
+          >
+            QR
+          </Link>
+          <DeleteButton urlId={url.id} shortcode={url.shortcode} />
+        </div>
       </div>
     </li>
   );
@@ -118,7 +108,6 @@ function CopyButton({ text }: { text: string }) {
 
   return (
     <button
-      type="button"
       onClick={handleCopy}
     >
       {copied ? "Copied!" : "Copy"}

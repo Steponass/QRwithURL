@@ -1,5 +1,4 @@
 /**
- * UrlCreationForm component.
  *
  * Renders the URL shortening form with:
  *   - URL input (the long URL to shorten)
@@ -16,10 +15,6 @@ import { useState } from "react";
 import { Form, useNavigation } from "react-router";
 import { validateUrl } from "~/lib/url-validation";
 import { validateCustomShortcode } from "~/lib/shortcode";
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
 
 interface UrlCreationFormProps {
   subdomain: string | null;
@@ -38,19 +33,14 @@ interface CreateActionData {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
 /**
  * TODO: Replace with your actual domain once purchased.
  * This is used only for display purposes in the form.
  */
-const DISPLAY_DOMAIN = "yourdomain.com";
+import { SITE_DOMAIN } from "~/lib/constants";
 
-// ---------------------------------------------------------------------------
-// Main component
-// ---------------------------------------------------------------------------
+const DISPLAY_DOMAIN = SITE_DOMAIN;
+
 
 export function UrlCreationForm({
   subdomain,
@@ -161,7 +151,7 @@ export function UrlCreationForm({
 
         {/* --- Error Display --- */}
         {clientError && (
-          <p style={{ color: "#dc2626" }} role="alert">
+          <p>
             {clientError}
           </p>
         )}
@@ -171,11 +161,10 @@ export function UrlCreationForm({
           <button
             type="submit"
             disabled={isSubmitting}
-            style={{ cursor: "pointer", padding: "0.5rem 1rem" }}
           >
             {isSubmitting ? "Creating..." : "Shorten URL"}
           </button>
-          <span style={{ color: "#666", fontSize: "0.875rem" }}>
+          <span>
             {urlCount} of {maxUrls} URLs used
           </span>
         </div>
@@ -184,9 +173,9 @@ export function UrlCreationForm({
   );
 }
 
-// ---------------------------------------------------------------------------
+// -----------------------------------------------
 // Sub-components
-// ---------------------------------------------------------------------------
+// -----------------------------------------------
 
 function UrlInput({ disabled }: { disabled: boolean }) {
   return (
@@ -197,7 +186,6 @@ function UrlInput({ disabled }: { disabled: boolean }) {
         name="originalUrl"
         placeholder="https://example.com/my-very-long-url"
         disabled={disabled}
-        style={{ padding: "0.5rem", fontSize: "1rem", width: "100%" }}
       />
     </label>
   );
@@ -215,8 +203,8 @@ function FormatSelector({
   const hasBrandedOption = subdomain !== null;
 
   return (
-    <fieldset style={{ border: "none", padding: 0, margin: 0 }}>
-      <legend style={{ fontWeight: "bold", marginBottom: "0.5rem" }}>
+    <fieldset>
+      <legend>
         URL format
       </legend>
 
@@ -234,14 +222,7 @@ function FormatSelector({
           </span>
         </label>
 
-        <label
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "0.5rem",
-            color: hasBrandedOption ? "inherit" : "#999",
-          }}
-        >
+        <label>
           <input
             type="radio"
             name="formatRadio"
@@ -293,9 +274,8 @@ function CustomShortcodeSection({
             name="customShortcode"
             placeholder="my-custom-code"
             disabled={disabled}
-            style={{ padding: "0.5rem", fontSize: "1rem", width: "200px" }}
           />
-          <p style={{ color: "#666", fontSize: "0.875rem", marginTop: "0.25rem" }}>
+          <p>
             Lowercase letters, numbers, and hyphens. Min 3 characters.
           </p>
         </div>
@@ -328,20 +308,12 @@ export function UrlCreatedSuccess({
   }
 
   return (
-    <div
-      style={{
-        padding: "1rem",
-        border: "1px solid #16a34a",
-        borderRadius: "8px",
-        backgroundColor: "#f0fdf4",
-        marginBottom: "1.5rem",
-      }}
-    >
-      <p style={{ fontWeight: "bold", color: "#16a34a", marginBottom: "0.5rem" }}>
+    <div>
+      <p>
         URL created!
       </p>
 
-      <p style={{ fontSize: "0.875rem", color: "#666", marginBottom: "0.5rem" }}>
+      <p>
         {createdUrl.originalUrl}
       </p>
 
@@ -350,7 +322,6 @@ export function UrlCreatedSuccess({
         <button
           type="button"
           onClick={handleCopy}
-          style={{ cursor: "pointer", padding: "0.25rem 0.5rem" }}
         >
           {copied ? "Copied!" : "Copy"}
         </button>

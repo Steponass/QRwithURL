@@ -17,24 +17,35 @@ import type { Route } from "./+types/dashboard.create";
 import {
   UrlCreationForm,
   UrlCreatedSuccess,
-} from "~/components/Url-creation-form";
+} from "~/components/UrlCreationPrompt";
 import { validateUrl } from "~/lib/url-validation";
 import {
   generateUniqueShortcode,
   validateCustomShortcode,
 } from "~/lib/shortcode";
+import { SITE_DOMAIN } from "~/lib/constants";
+import { getTierPermissions } from "~/lib/tier";
 
 // ---------------------------------------------------------------------------
-// Constants
+// Action result types
 // ---------------------------------------------------------------------------
 
-const MAX_URLS_PER_USER = 10;
+type CreateActionSuccess = {
+  success: true;
+  createdUrl: {
+    shortcode: string;
+    subdomain: string | null;
+    originalUrl: string;
+    fullShortUrl: string;
+  };
+};
 
-/**
- * TODO: Replace with your actual domain once purchased.
- * Used to construct the full short URL returned after creation.
- */
-const SITE_DOMAIN = "yourdomain.com";
+type CreateActionError = {
+  success: false;
+  error: string;
+};
+
+type CreateActionResult = CreateActionSuccess | CreateActionError;
 
 // ---------------------------------------------------------------------------
 // Loader
@@ -44,19 +55,23 @@ export async function loader(args: Route.LoaderArgs) {
   const { userId } = await getAuth(args);
 
   if (!userId) {
+    const permissions = getTierPermissions("free");
     return {
       authenticated: false as const,
       subdomain: null,
       urlCount: 0,
+      maxUrls: permissions.maxUrls,
     };
   }
 
   const db = args.context.cloudflare.env.qr_url_db;
 
   const userRow = await db
-    .prepare("SELECT subdomain FROM users WHERE clerk_user_id = ?")
+    .prepare("SELECT subdomain, plan FROM users WHERE clerk_user_id = ?")
     .bind(userId)
-    .first<{ subdomain: string }>();
+    .first<{ subdomain: string; plan: string }>();
+
+  const permissions = getTierPermissions(userRow?.plan);
 
   const urlCountRow = await db
     .prepare("SELECT COUNT(*) as count FROM urls WHERE user_id = ?")
@@ -67,6 +82,7 @@ export async function loader(args: Route.LoaderArgs) {
     authenticated: true as const,
     subdomain: userRow?.subdomain ?? null,
     urlCount: urlCountRow?.count ?? 0,
+    maxUrls: permissions.maxUrls,
   };
 }
 
@@ -103,7 +119,14 @@ export async function action(args: Route.ActionArgs) {
     );
   }
 
-  // --- Enforce URL limit ---
+  // --- Enforce URL limit based on user's tier ---
+  const userRow = await db
+    .prepare("SELECT subdomain, plan FROM users WHERE clerk_user_id = ?")
+    .bind(userId)
+    .first<{ subdomain: string; plan: string }>();
+
+  const permissions = getTierPermissions(userRow?.plan);
+
   const urlCountRow = await db
     .prepare("SELECT COUNT(*) as count FROM urls WHERE user_id = ?")
     .bind(userId)
@@ -111,11 +134,11 @@ export async function action(args: Route.ActionArgs) {
 
   const currentCount = urlCountRow?.count ?? 0;
 
-  if (currentCount >= MAX_URLS_PER_USER) {
+  if (currentCount >= permissions.maxUrls) {
     return data(
       {
         success: false,
-        error: `You've reached the limit of ${MAX_URLS_PER_USER} URLs. Delete an existing URL to create a new one.`,
+        error: `You've reached the limit of ${permissions.maxUrls} URLs. Delete an existing URL to create a new one.`,
       },
       { status: 403 }
     );
@@ -125,11 +148,6 @@ export async function action(args: Route.ActionArgs) {
   let urlSubdomain: string | null = null;
 
   if (urlFormat === "branded") {
-    const userRow = await db
-      .prepare("SELECT subdomain FROM users WHERE clerk_user_id = ?")
-      .bind(userId)
-      .first<{ subdomain: string }>();
-
     if (!userRow?.subdomain) {
       return data(
         {
@@ -222,7 +240,7 @@ export async function action(args: Route.ActionArgs) {
     createdUrl: {
       shortcode,
       subdomain: urlSubdomain,
-      originalUrl: urlValidation.normalizedUrl!,
+      originalUrl: urlValidation.normalizedUrl,
       fullShortUrl,
     },
   });
@@ -240,7 +258,11 @@ export default function DashboardCreate({
     return <RedirectToSignIn />;
   }
 
-  const { subdomain, urlCount } = loaderData;
+  const { subdomain, urlCount, maxUrls } = loaderData;
+
+  const result = actionData as CreateActionResult | undefined;
+  const isSuccess = result?.success === true;
+  const isError = result?.success === false;
 
   return (
     <div style={{ padding: "2rem", maxWidth: "600px" }}>
@@ -251,21 +273,21 @@ export default function DashboardCreate({
       <h1 style={{ marginTop: "1rem" }}>Create Short URL</h1>
 
       {/* Show success message if URL was just created */}
-      {actionData && "createdUrl" in actionData && actionData.createdUrl && (
-        <UrlCreatedSuccess createdUrl={actionData.createdUrl} />
+      {isSuccess && (
+        <UrlCreatedSuccess createdUrl={result.createdUrl} />
       )}
 
       {/* Show server-side error if action failed */}
-      {actionData && "error" in actionData && actionData.error && (
+      {isError && (
         <p style={{ color: "#dc2626", marginBottom: "1rem" }} role="alert">
-          {actionData.error}
+          {result.error}
         </p>
       )}
 
       <UrlCreationForm
         subdomain={subdomain}
         urlCount={urlCount}
-        maxUrls={MAX_URLS_PER_USER}
+        maxUrls={maxUrls}
       />
     </div>
   );

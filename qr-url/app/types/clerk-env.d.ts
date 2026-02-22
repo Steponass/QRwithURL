@@ -22,6 +22,16 @@ interface Env {
   TURNSTILE_SECRET_KEY: string;
 
   /**
+   * Secret salt for hashing visitor IP addresses.
+   * Used in click tracking to count unique visitors without storing raw IPs.
+   * The hash formula is: SHA-256(ip + ":" + YYYY-MM-DD + ":" + salt)
+   *
+   * Can be any random string. Generate one with:
+   *   openssl rand -hex 32
+   */
+  CLICK_HASH_SALT: string;
+
+  /**
    * Workers KV namespace for anonymous rate limiting.
    * Bound via wrangler.jsonc kv_namespaces config.
    *
@@ -31,4 +41,10 @@ interface Env {
    * in case cf-typegen hasn't been run yet.
    */
   RATE_LIMIT_KV: KVNamespace;
+
+    /**
+   * R2 bucket for QR code PNG images.
+   * Bound via wrangler.jsonc r2_buckets config.
+   */
+  QR_IMAGES: R2Bucket;
 }
