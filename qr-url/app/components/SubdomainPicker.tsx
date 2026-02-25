@@ -3,16 +3,17 @@
  *
  * Two modes:
  *   1. "claim" — user has no subdomain yet, show input + submit
- *   2. "display" — user has a subdomain, show it with an "Edit" button
+ *   2. "display" — user has a subdomain, show it with a "Change" button
  *      that switches to an inline edit form
  *
  * Uses useFetcher instead of <Form> so the submission doesn't trigger
  * a full page navigation. The dashboard loader re-runs automatically
  * after the fetcher completes, updating the displayed subdomain.
  *
- * The edit mode includes a warning that existing branded URLs stay
- * on the old subdomain. This is important — changing your subdomain
- * doesn't retroactively update URLs you've already created.
+ * If the user has branded QR codes, changing the subdomain will make
+ * those QR PNGs stale (they encode the old subdomain in the image and
+ * can't be updated server-side). We show a modal warning BEFORE
+ * submitting so the user can make an informed decision.
  */
 
 import { useState } from "react";
@@ -22,15 +23,22 @@ import {
   cleanSubdomain,
 } from "~/lib/subdomain-validation";
 import { SITE_DOMAIN } from "~/lib/constants";
+import { Modal } from "~/components/Modal";
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
 
 interface SubdomainPickerProps {
   currentSubdomain: string | null;
+  /** Number of saved QR codes with url_type === 'branded'. */
+  brandedQrCount: number;
 }
 
 /**
  * The shape of the data returned by the dashboard action
  * when processing a subdomain submission.
- * Matches what we return from the action in dashboard.tsx.
+ * Matches what we return from handleSetSubdomain in dashboard.tsx.
  */
 interface SubdomainActionData {
   intent: "set-subdomain";
@@ -42,9 +50,17 @@ interface SubdomainActionData {
 // Main component
 // ---------------------------------------------------------------------------
 
-export function SubdomainPicker({ currentSubdomain }: SubdomainPickerProps) {
+export function SubdomainPicker({
+  currentSubdomain,
+  brandedQrCount,
+}: SubdomainPickerProps) {
   if (currentSubdomain) {
-    return <SubdomainDisplay currentSubdomain={currentSubdomain} />;
+    return (
+      <SubdomainDisplay
+        currentSubdomain={currentSubdomain}
+        brandedQrCount={brandedQrCount}
+      />
+    );
   }
 
   return (
@@ -55,7 +71,7 @@ export function SubdomainPicker({ currentSubdomain }: SubdomainPickerProps) {
         A subdomain lets you create branded short URLs like{" "}
         <strong>yourname.{SITE_DOMAIN}/link</strong>
       </p>
-      <SubdomainForm currentSubdomain={null} />
+      <SubdomainForm currentSubdomain={null} brandedQrCount={0} />
     </section>
   );
 }
@@ -66,8 +82,10 @@ export function SubdomainPicker({ currentSubdomain }: SubdomainPickerProps) {
 
 function SubdomainDisplay({
   currentSubdomain,
+  brandedQrCount,
 }: {
   currentSubdomain: string;
+  brandedQrCount: number;
 }) {
   const [isEditing, setIsEditing] = useState(false);
 
@@ -75,12 +93,10 @@ function SubdomainDisplay({
     return (
       <section>
         <h2>Edit Subdomain</h2>
-        <p>
-          Existing branded URLs will stay on{" "}
-          <strong>{currentSubdomain}.{SITE_DOMAIN}</strong> — they won't
-          move to the new subdomain.
-        </p>
-        <SubdomainForm currentSubdomain={currentSubdomain} />
+        <SubdomainForm
+          currentSubdomain={currentSubdomain}
+          brandedQrCount={brandedQrCount}
+        />
         <button
           type="button"
           onClick={() => setIsEditing(false)}
@@ -109,16 +125,20 @@ function SubdomainDisplay({
 }
 
 // ---------------------------------------------------------------------------
-// Form (shared between claim and edit)
+// Form (shared between claim and edit modes)
 // ---------------------------------------------------------------------------
 
 function SubdomainForm({
   currentSubdomain,
+  brandedQrCount,
 }: {
   currentSubdomain: string | null;
+  brandedQrCount: number;
 }) {
   const fetcher = useFetcher<SubdomainActionData>();
   const [clientError, setClientError] = useState<string | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [pendingSubdomain, setPendingSubdomain] = useState<string | null>(null);
 
   const isSubmitting = fetcher.state !== "idle";
   const serverError =
@@ -126,8 +146,8 @@ function SubdomainForm({
 
   /**
    * Client-side validation runs on submit, before sending to the server.
-   * This catches obvious format issues instantly (no round trip).
-   * The server re-validates everything — client validation is just UX.
+   * If the user has branded QR codes, we intercept here to show the
+   * modal warning before proceeding. If they have none, we submit directly.
    */
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -143,38 +163,92 @@ function SubdomainForm({
       return;
     }
 
-    // Clear client error and submit to the server
     setClientError(null);
+
+    // If the user has branded QR codes, warn them before proceeding.
+    // QR PNGs encode the subdomain at generation time and can't be
+    // updated server-side — they'll need to be manually regenerated.
+    if (brandedQrCount > 0) {
+      setPendingSubdomain(cleaned);
+      setIsModalOpen(true);
+      return;
+    }
+
+    submitSubdomain(cleaned);
+  }
+
+  function submitSubdomain(subdomain: string) {
     fetcher.submit(
-      { intent: "set-subdomain", subdomain: cleaned },
+      { intent: "set-subdomain", subdomain },
       { method: "post" }
     );
+  }
+
+  function handleModalConfirm() {
+    setIsModalOpen(false);
+
+    if (pendingSubdomain !== null) {
+      submitSubdomain(pendingSubdomain);
+      setPendingSubdomain(null);
+    }
+  }
+
+  function handleModalCancel() {
+    setIsModalOpen(false);
+    setPendingSubdomain(null);
   }
 
   const displayedError = clientError ?? serverError ?? null;
 
   return (
-    <form onSubmit={handleSubmit}>
-      <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-        <input
-          type="text"
-          name="subdomain"
-          defaultValue={currentSubdomain ?? ""}
-          placeholder="your-name"
-          aria-label="Subdomain"
-          aria-invalid={displayedError ? "true" : undefined}
-          disabled={isSubmitting}/>
-        <span>.{SITE_DOMAIN}</span>
-        <button type="submit" disabled={isSubmitting} style={{ cursor: "pointer" }}>
-          {isSubmitting ? "Saving..." : "Save"}
-        </button>
-      </div>
-
-      {displayedError && (
-        <p role="alert">
-          {displayedError}
+    <>
+      <Modal
+        isOpen={isModalOpen}
+        title="Change subdomain?"
+        confirmLabel="Yes, change it"
+        cancelLabel="Keep current"
+        onConfirm={handleModalConfirm}
+        onCancel={handleModalCancel}
+      >
+        <p>
+          Your URLs will be migrated to the new subdomain automatically.
         </p>
-      )}
-    </form>
+        <p>
+          However,{" "}
+          {brandedQrCount === 1
+            ? "1 branded QR code encodes"
+            : `${brandedQrCount} branded QR codes encode`}{" "}
+          the old subdomain in{" "}
+          {brandedQrCount === 1 ? "its" : "their"} image and cannot be
+          updated automatically.{" "}
+          {brandedQrCount === 1 ? "It" : "They"} will need to be deleted
+          and regenerated manually from your dashboard.
+        </p>
+      </Modal>
+
+      <form onSubmit={handleSubmit}>
+        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+          <input
+            type="text"
+            name="subdomain"
+            defaultValue={currentSubdomain ?? ""}
+            placeholder="your-name"
+            aria-label="Subdomain"
+            aria-invalid={displayedError ? "true" : undefined}
+            disabled={isSubmitting}
+          />
+          <span>.{SITE_DOMAIN}</span>
+          <button type="submit" disabled={isSubmitting} style={{ cursor: "pointer" }}>
+            {isSubmitting ? "Saving..." : "Save"}
+          </button>
+        </div>
+
+        {displayedError && (
+          <p role="alert">
+            {displayedError}
+          </p>
+        )}
+      </form>
+    </>
   );
 }

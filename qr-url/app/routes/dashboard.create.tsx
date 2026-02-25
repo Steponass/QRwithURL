@@ -127,23 +127,6 @@ export async function action(args: Route.ActionArgs) {
 
   const permissions = getTierPermissions(userRow?.plan);
 
-  const urlCountRow = await db
-    .prepare("SELECT COUNT(*) as count FROM urls WHERE user_id = ?")
-    .bind(userId)
-    .first<{ count: number }>();
-
-  const currentCount = urlCountRow?.count ?? 0;
-
-  if (currentCount >= permissions.maxUrls) {
-    return data(
-      {
-        success: false,
-        error: `You've reached the limit of ${permissions.maxUrls} URLs. Delete an existing URL to create a new one.`,
-      },
-      { status: 403 }
-    );
-  }
-
   // --- Determine subdomain for this URL ---
   let urlSubdomain: string | null = null;
 
@@ -221,13 +204,56 @@ export async function action(args: Route.ActionArgs) {
   }
 
   // --- Insert the URL ---
-  await db
+let insertResult: Awaited<ReturnType<D1PreparedStatement["run"]>>;
+
+try {
+  insertResult = await db
     .prepare(
       `INSERT INTO urls (user_id, shortcode, original_url, subdomain)
-       VALUES (?, ?, ?, ?)`
+       SELECT ?, ?, ?, ?
+       WHERE (SELECT COUNT(*) FROM urls WHERE user_id = ?) < ?`
     )
-    .bind(userId, shortcode, urlValidation.normalizedUrl, urlSubdomain)
+    .bind(
+      userId,
+      shortcode,
+      urlValidation.normalizedUrl,
+      urlSubdomain,
+      userId,
+      permissions.maxUrls
+    )
     .run();
+} catch (error: unknown) {
+  const isUniqueConstraintError =
+    error instanceof Error &&
+    error.message.includes("UNIQUE constraint failed");
+
+  if (isUniqueConstraintError) {
+    const scopeDescription =
+      urlSubdomain === null
+        ? "globally"
+        : `under ${urlSubdomain}.${SITE_DOMAIN}`;
+
+    return data(
+      {
+        success: false,
+        error: `Shortcode "${shortcode}" is already taken ${scopeDescription}.`,
+      },
+      { status: 409 }
+    );
+  }
+
+  throw error;
+}
+
+if (insertResult.meta.changes === 0) {
+  return data(
+    {
+      success: false,
+      error: `You've reached the limit of ${permissions.maxUrls} URLs. Delete an existing URL to create a new one.`,
+    },
+    { status: 403 }
+  );
+}
 
   // --- Build the full short URL for display ---
   const fullShortUrl =

@@ -1,14 +1,13 @@
 /**
- *
- *
- * TODO: SITE_DOMAIN should move to an environment variable once domain is purchased.
- */
-
-/**
  * The root domain used to construct short URLs for display.
  * Does NOT include protocol (https://) or trailing slash.
+ *
+ * Examples:
+ *   "localhost"    → local development
+ *   "yourdomain.com" → production
  */
-export const SITE_DOMAIN = "yourdomain.com";
+export const SITE_DOMAIN: string =
+  import.meta.env.VITE_SITE_DOMAIN ?? "localhost";
 
 /**
  * Maximum URLs per free-tier user.

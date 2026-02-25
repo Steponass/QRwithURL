@@ -69,7 +69,7 @@ export async function resolveShortestUrl(
   userId: string,
   urlRecord: UrlRecord,
   currentUrlCount: number,
-  maxUrls: number
+  maxUrls: number,
 ): Promise<ShortestUrlResult> {
   // Case 1: URL is already short format — just use it
   if (urlRecord.subdomain === null) {
@@ -87,7 +87,7 @@ export async function resolveShortestUrl(
        WHERE subdomain IS NULL
          AND original_url = ?
          AND user_id = ?
-       LIMIT 1`
+       LIMIT 1`,
     )
     .bind(urlRecord.original_url, userId)
     .first<{ id: number; shortcode: string }>();
@@ -117,7 +117,7 @@ export async function resolveShortestUrl(
       `SELECT 1 FROM urls
        WHERE COALESCE(subdomain, '') = ''
          AND shortcode = ?
-       LIMIT 1`
+       LIMIT 1`,
     )
     .bind(urlRecord.shortcode)
     .first();
@@ -143,13 +143,43 @@ export async function resolveShortestUrl(
   }
 
   // Insert the new short-format URL
-  await db
-    .prepare(
-      `INSERT INTO urls (user_id, shortcode, original_url, subdomain)
-       VALUES (?, ?, ?, NULL)`
-    )
-    .bind(userId, newShortcode, urlRecord.original_url)
-    .run();
+  // The limit pre-check above (currentUrlCount >= maxUrls) guards the
+  // common case. This atomic INSERT guards against concurrent requests
+  // both passing the pre-check before either insert completes.
+  let insertResult: Awaited<ReturnType<D1PreparedStatement["run"]>>;
+
+  try {
+    insertResult = await db
+      .prepare(
+        `INSERT INTO urls (user_id, shortcode, original_url, subdomain)
+       SELECT ?, ?, ?, NULL
+       WHERE (SELECT COUNT(*) FROM urls WHERE user_id = ?) < ?`,
+      )
+      .bind(userId, newShortcode, urlRecord.original_url, userId, maxUrls)
+      .run();
+  } catch (error: unknown) {
+    const isUniqueConstraintError =
+      error instanceof Error &&
+      error.message.includes("UNIQUE constraint failed");
+
+    if (isUniqueConstraintError) {
+      return {
+        encodedUrl: "",
+        autoCreated: false,
+        error: "Shortcode conflict. Please try again.",
+      };
+    }
+
+    throw error;
+  }
+
+  if (insertResult.meta.changes === 0) {
+    return {
+      encodedUrl: "",
+      autoCreated: false,
+      error: `You've reached the ${maxUrls}-URL limit. Delete a URL before auto-creating a short version.`,
+    };
+  }
 
   return {
     encodedUrl: `${SITE_DOMAIN}/${newShortcode}`,

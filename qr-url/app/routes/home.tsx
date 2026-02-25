@@ -194,6 +194,7 @@ export async function action(args: Route.ActionArgs) {
    * datetime('now', '+365 days') is SQLite's date arithmetic.
    * It adds exactly 365 days to the current UTC timestamp.
    */
+try {
   await db
     .prepare(
       `INSERT INTO urls (user_id, shortcode, original_url, subdomain, expires_at)
@@ -201,6 +202,20 @@ export async function action(args: Route.ActionArgs) {
     )
     .bind(shortcode, urlValidation.normalizedUrl)
     .run();
+} catch (error: unknown) {
+  const isUniqueConstraintError =
+    error instanceof Error &&
+    error.message.includes("UNIQUE constraint failed");
+
+  if (isUniqueConstraintError) {
+    return data(
+      { success: false, error: "A collision occurred. Please try again." },
+      { status: 409 }
+    );
+  }
+
+  throw error;
+}
 
   // --- 6. Increment rate limit (only after successful creation) ---
   const newRemaining = await incrementRateLimit(kv, clientIp);

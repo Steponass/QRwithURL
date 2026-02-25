@@ -1,6 +1,4 @@
 /**
- * dashboard.qr.new.tsx — /dashboard/qr/new route
- *
  * QR code generation page.
  *
  * Two entry points:
@@ -31,16 +29,13 @@ import { QrPreview } from "~/components/QR/QrPreview";
 import {
   generateQrDataUrl,
   dataUrlToBytes,
+  MAX_QR_IMAGE_SIZE_BYTES,
 } from "~/lib/qr-generation";
 import type { QrCustomization } from "~/lib/qr-generation";
 import { uploadQrImage } from "~/lib/qr-storage";
 import { resolveShortestUrl } from "~/lib/qr-shortest";
 import { SITE_DOMAIN } from "~/lib/constants";
 import { getTierPermissions } from "~/lib/tier";
-
-// ---------------------------------------------------------------------------
-// Loader
-// ---------------------------------------------------------------------------
 
 export async function loader(args: Route.LoaderArgs) {
   const { userId } = await getAuth(args);
@@ -73,10 +68,15 @@ export async function loader(args: Route.LoaderArgs) {
       `SELECT id, shortcode, original_url, subdomain
        FROM urls
        WHERE user_id = ?
-       ORDER BY created_at DESC`
+       ORDER BY created_at DESC`,
     )
     .bind(userId)
-    .all<{ id: number; shortcode: string; original_url: string; subdomain: string | null }>();
+    .all<{
+      id: number;
+      shortcode: string;
+      original_url: string;
+      subdomain: string | null;
+    }>();
 
   /** Count existing QR codes for limit display */
   const qrCountRow = await db
@@ -99,15 +99,14 @@ export async function loader(args: Route.LoaderArgs) {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Action
-// ---------------------------------------------------------------------------
-
 export async function action(args: Route.ActionArgs) {
   const { userId } = await getAuth(args);
 
   if (!userId) {
-    return data({ success: false, error: "Not authenticated." }, { status: 401 });
+    return data(
+      { success: false, error: "Not authenticated." },
+      { status: 401 },
+    );
   }
 
   const formData = await args.request.formData();
@@ -131,26 +130,40 @@ export async function action(args: Route.ActionArgs) {
   // --- Extract form fields ---
   const urlId = Number(formData.get("urlId"));
   const urlType = (formData.get("urlType") as string) ?? "shortest";
-  const customizationJson = (formData.get("customizationJson") as string) ?? "{}";
+  const customizationJson =
+    (formData.get("customizationJson") as string) ?? "{}";
   const imageDataUrl = (formData.get("imageDataUrl") as string) ?? "";
+
+  const VALID_URL_TYPES = ["original", "branded", "shortest"] as const;
+  type UrlType = (typeof VALID_URL_TYPES)[number];
+
+  if (!VALID_URL_TYPES.includes(urlType as UrlType)) {
+    return data(
+      { success: false, error: "Invalid URL type." },
+      { status: 400 },
+    );
+  }
 
   // --- Validate image data ---
   if (!imageDataUrl || !imageDataUrl.startsWith("data:image/png")) {
-    return data({ success: false, error: "Invalid image data." }, { status: 400 });
+    return data(
+      { success: false, error: "Invalid image data." },
+      { status: 400 },
+    );
   }
 
-  // --- Enforce QR code limit ---
-  const qrCountRow = await db
-    .prepare("SELECT COUNT(*) as count FROM qr_codes WHERE user_id = ?")
-    .bind(userId)
-    .first<{ count: number }>();
+  // Decode to bytes here so we can:
+  //   a) check the actual size (base64 is ~33% larger than the real PNG)
+  //   b) reuse pngBytes later for the R2 upload, avoiding a second decode
+  const pngBytes = dataUrlToBytes(imageDataUrl);
 
-  const currentQrCount = qrCountRow?.count ?? 0;
-
-  if (currentQrCount >= permissions.maxQrCodes) {
+  if (pngBytes.length > MAX_QR_IMAGE_SIZE_BYTES) {
     return data(
-      { success: false, error: `You've reached the limit of ${permissions.maxQrCodes} QR codes.` },
-      { status: 403 }
+      {
+        success: false,
+        error: `Image exceeds the 200KB size limit (${Math.round(pngBytes.length / 1024)}KB received).`,
+      },
+      { status: 413 },
     );
   }
 
@@ -158,10 +171,15 @@ export async function action(args: Route.ActionArgs) {
   const urlRecord = await db
     .prepare(
       `SELECT id, shortcode, original_url, subdomain
-       FROM urls WHERE id = ? AND user_id = ?`
+       FROM urls WHERE id = ? AND user_id = ?`,
     )
     .bind(urlId, userId)
-    .first<{ id: number; shortcode: string; original_url: string; subdomain: string | null }>();
+    .first<{
+      id: number;
+      shortcode: string;
+      original_url: string;
+      subdomain: string | null;
+    }>();
 
   if (!urlRecord) {
     return data({ success: false, error: "URL not found." }, { status: 404 });
@@ -174,10 +192,13 @@ export async function action(args: Route.ActionArgs) {
     encodedUrl = urlRecord.original_url;
   } else if (urlType === "branded") {
     if (!urlRecord.subdomain) {
-      return data({
-        success: false,
-        error: "This URL doesn't have a branded format.",
-      }, { status: 400 });
+      return data(
+        {
+          success: false,
+          error: "This URL doesn't have a branded format.",
+        },
+        { status: 400 },
+      );
     }
     encodedUrl = `${urlRecord.subdomain}.${SITE_DOMAIN}/${urlRecord.shortcode}`;
   } else {
@@ -192,27 +213,75 @@ export async function action(args: Route.ActionArgs) {
       userId,
       urlRecord,
       urlCountRow?.count ?? 0,
-      permissions.maxUrls
+      permissions.maxUrls,
     );
 
     if (shortestResult.error) {
-      return data({ success: false, error: shortestResult.error }, { status: 400 });
+      return data(
+        { success: false, error: shortestResult.error },
+        { status: 400 },
+      );
     }
 
     encodedUrl = shortestResult.encodedUrl;
   }
 
   // --- Upload PNG to R2 ---
-  const pngBytes = dataUrlToBytes(imageDataUrl);
-  const storagePath = await uploadQrImage(r2, userId, pngBytes);
 
-  // --- Save metadata to D1 ---
+  // Reserve the slot atomically. If count is already at the limit,
+  // changes === 0 and we return before uploading anything to R2.
+  let insertResult: Awaited<ReturnType<D1PreparedStatement["run"]>>;
+
+  try {
+    insertResult = await db
+      .prepare(
+        `INSERT INTO qr_codes (user_id, url_id, url_type, encoded_url, storage_path, customization)
+       SELECT ?, ?, ?, ?, 'pending', ?
+       WHERE (SELECT COUNT(*) FROM qr_codes WHERE user_id = ?) < ?`,
+      )
+      .bind(
+        userId,
+        urlId,
+        urlType,
+        encodedUrl,
+        customizationJson,
+        userId,
+        permissions.maxQrCodes,
+      )
+      .run();
+  } catch (error: unknown) {
+    // UNIQUE constraints on qr_codes are unlikely but handle cleanly
+    throw error;
+  }
+
+  if (insertResult.meta.changes === 0) {
+    return data(
+      {
+        success: false,
+        error: `You've reached the limit of ${permissions.maxQrCodes} QR codes.`,
+      },
+      { status: 403 },
+    );
+  }
+
+  const newRowId = insertResult.meta.last_row_id;
+
+  // Slot is reserved in D1. Now upload the image.
+  // If this fails, we clean up the D1 row so the user's slot is freed.
+  let storagePath: string;
+
+  try {
+    storagePath = await uploadQrImage(r2, userId, pngBytes);
+  } catch (uploadError: unknown) {
+    await db.prepare("DELETE FROM qr_codes WHERE id = ?").bind(newRowId).run();
+
+    throw uploadError;
+  }
+
+  // Update the placeholder storage_path with the real R2 path.
   await db
-    .prepare(
-      `INSERT INTO qr_codes (user_id, url_id, url_type, encoded_url, storage_path, customization)
-       VALUES (?, ?, ?, ?, ?, ?)`
-    )
-    .bind(userId, urlId, urlType, encodedUrl, storagePath, customizationJson)
+    .prepare("UPDATE qr_codes SET storage_path = ? WHERE id = ?")
+    .bind(storagePath, newRowId)
     .run();
 
   return data({ success: true });
@@ -222,9 +291,7 @@ export async function action(args: Route.ActionArgs) {
 // Component
 // ---------------------------------------------------------------------------
 
-export default function DashboardQrNew({
-  loaderData,
-}: Route.ComponentProps) {
+export default function DashboardQrNew({ loaderData }: Route.ComponentProps) {
   if (!loaderData.authenticated) {
     return <RedirectToSignIn />;
   }
@@ -252,7 +319,7 @@ export default function DashboardQrNew({
   async function handleGenerate(
     urlId: number,
     urlType: string,
-    customization: QrCustomization
+    customization: QrCustomization,
   ) {
     setIsGenerating(true);
     setGenerateError(null);
@@ -317,8 +384,8 @@ export default function DashboardQrNew({
 
       {isAtLimit && (
         <p style={{ color: "#dc2626", marginBottom: "1rem" }}>
-          You've reached the limit of {maxQrCodes} QR codes.
-          Delete an existing QR code to create a new one.
+          You've reached the limit of {maxQrCodes} QR codes. Delete an existing
+          QR code to create a new one.
         </p>
       )}
 

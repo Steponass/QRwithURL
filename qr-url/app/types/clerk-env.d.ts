@@ -15,6 +15,7 @@
  * anything — both declarations combine into one type.
  */
 interface Env {
+  SITE_DOMAIN: string;
   CLERK_SECRET_KEY: string;
   VITE_CLERK_PUBLISHABLE_KEY: string;
 

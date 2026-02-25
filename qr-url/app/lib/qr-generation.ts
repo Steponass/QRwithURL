@@ -19,9 +19,6 @@
 
 import QRCode from "qrcode";
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
 
 export interface QrCustomization {
   /** Foreground (dark module) color. Hex with alpha: "#000000FF" */
@@ -56,17 +53,16 @@ export const ERROR_CORRECTION_OPTIONS = [
   { value: "H" as const, label: "High (30%)" },
 ] as const;
 
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
+
+// Maximum allowed size for a generated QR code PNG.
+// 1024px QR codes with H error correction are typically 30–80KB.
+// 200KB gives plenty of headroom while blocking unreasonably large outputs.
+export const MAX_QR_IMAGE_SIZE_BYTES = 200 * 1024;
 
 /**
  * Generates a QR code as a base64 data URI (PNG format).
- *
- * @param url - The URL to encode in the QR code
- * @param customization - Visual customization options
- * @returns A data URI string: "data:image/png;base64,..."
  */
+
 export async function generateQrDataUrl(
   url: string,
   customization: QrCustomization
@@ -80,6 +76,16 @@ export async function generateQrDataUrl(
       light: customization.backgroundColor,
     },
   });
+
+  // Base64 inflates binary size by ~33%, so we decode to get the
+  // true byte count before checking against the limit.
+  const approximateSizeBytes = dataUrlToBytes(dataUrl).length;
+
+  if (approximateSizeBytes > MAX_QR_IMAGE_SIZE_BYTES) {
+    throw new Error(
+      `Generated QR code is ${Math.round(approximateSizeBytes / 1024)}KB, which exceeds the 200KB limit.`
+    );
+  }
 
   return dataUrl;
 }

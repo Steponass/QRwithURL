@@ -386,7 +386,9 @@ export default function Dashboard({ loaderData }: Route.ComponentProps) {
         </p>
       )}
 
-      <SubdomainPicker currentSubdomain={subdomain} />
+      <SubdomainPicker 
+      currentSubdomain={subdomain} 
+      brandedQrCount={qrCount} />
 
       <UrlList
         urls={urls}

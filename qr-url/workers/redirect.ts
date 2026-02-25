@@ -1,5 +1,4 @@
 /**
- * redirect.ts
  *
  * Handles short URL redirects. This is the most performance-critical
  * code path in the entire app — every short URL visit runs through here.
@@ -39,21 +38,6 @@ interface ParsedShortUrl {
 // ---------------------------------------------------------------------------
 // Configuration
 // ---------------------------------------------------------------------------
-
-/**
- * Your root domain, without any subdomain.
- * Used to determine whether a request is on the root domain (short format)
- * or on a subdomain (branded format).
- *
- * Example: if ROOT_DOMAIN is "qrurl.dev"
- *   - "qrurl.dev/abc123"       → short format,   subdomain = null
- *   - "step.qrurl.dev/abc123"  → branded format,  subdomain = "step"
- *   - "app.qrurl.dev/anything" → reserved,        skip (let React Router handle)
- *
- * TODO: Move this to an environment variable in wrangler.jsonc
- *       once you've purchased your domain.
- */
-const ROOT_DOMAIN = "localhost";
 
 /**
  * Subdomains that should NOT be treated as user branded subdomains.
@@ -102,7 +86,11 @@ export async function handleRedirect(
     return null;
   }
 
-  const parsed = parseShortUrl(request);
+  // env.SITE_DOMAIN is set in wrangler.jsonc vars.
+  // We pass it through to the parser so it can verify that the
+  // incoming hostname actually belongs to our domain, not just
+  // any domain that happens to point at this Worker.
+  const parsed = parseShortUrl(request, env.SITE_DOMAIN);
 
   if (!parsed) {
     return null;
@@ -150,14 +138,18 @@ export async function handleRedirect(
  * Parses the request URL to extract a shortcode and optional subdomain.
  * Returns null if this doesn't look like a short URL request.
  *
- * Examples (assuming ROOT_DOMAIN = "qrurl.dev"):
+ * Examples (assuming rootDomain = "qrurl.dev"):
  *   "https://qrurl.dev/abc123"        → { shortcode: "abc123", subdomain: null }
  *   "https://step.qrurl.dev/mysite"   → { shortcode: "mysite", subdomain: "step" }
  *   "https://qrurl.dev/dashboard"     → null (reserved path)
  *   "https://app.qrurl.dev/anything"  → null (reserved subdomain)
  *   "https://qrurl.dev/"              → null (no shortcode)
+ *   "https://otherdomain.com/abc"     → null (hostname doesn't match rootDomain)
  */
-function parseShortUrl(request: Request): ParsedShortUrl | null {
+function parseShortUrl(
+  request: Request,
+  rootDomain: string
+): ParsedShortUrl | null {
   const url = new URL(request.url);
   const hostname = url.hostname;
 
@@ -187,10 +179,24 @@ function parseShortUrl(request: Request): ParsedShortUrl | null {
   // Step 2: Determine if this is a branded or short format URL
   // -------------------------------------------------------------------------
 
-  const subdomain = extractSubdomain(hostname);
+  const subdomain = extractSubdomain(hostname, rootDomain);
+
+  // extractSubdomain returns null in two cases:
+  //   a) The hostname is our root domain with no subdomain → short format URL
+  //   b) The hostname doesn't match our domain at all → not our request
+  //
+  // We can distinguish them: if the hostname doesn't match rootDomain at
+  // all (neither equals it nor ends with `.${rootDomain}`), we bail out.
+  const isRootDomain = hostname === rootDomain || hostname === "localhost";
+  const isOurSubdomain =
+    subdomain !== null && hostname.endsWith(`.${rootDomain}`);
+
+  if (!isRootDomain && !isOurSubdomain) {
+    return null;
+  }
 
   // If it's a reserved subdomain like "app" or "api", let React Router handle it.
-  if (subdomain && RESERVED_SUBDOMAINS.has(subdomain)) {
+  if (subdomain !== null && RESERVED_SUBDOMAINS.has(subdomain)) {
     return null;
   }
 
@@ -198,32 +204,39 @@ function parseShortUrl(request: Request): ParsedShortUrl | null {
 }
 
 /**
- * Extracts the subdomain from a hostname.
+ * Extracts the user subdomain from a hostname.
  *
- * "step.qrurl.dev" → "step"
- * "qrurl.dev"      → null
- * "localhost"       → null
+ * Takes the rootDomain as a parameter so this function works
+ * correctly across environments without hardcoded values.
  *
- * For local development, there is no subdomain — localhost doesn't
- * support subdomains without extra hosts file configuration.
- * We'll handle branded URL testing differently (more on this later).
+ * Examples (rootDomain = "qrurl.dev"):
+ *   "qrurl.dev"       → null  (root domain, no subdomain)
+ *   "step.qrurl.dev"  → "step"
+ *   "localhost"       → null  (local dev)
+ *   "evil.com"        → null  (doesn't match our domain)
  */
-function extractSubdomain(hostname: string): string | null {
+function extractSubdomain(
+  hostname: string,
+  rootDomain: string
+): string | null {
   // Local development: no subdomain support
   if (hostname === "localhost" || hostname === "127.0.0.1") {
     return null;
   }
 
-  // Split "step.qrurl.dev" into ["step", "qrurl", "dev"]
-  const parts = hostname.split(".");
-
-  // "qrurl.dev" has 2 parts → no subdomain
-  // "step.qrurl.dev" has 3 parts → subdomain is "step"
-  if (parts.length <= 2) {
+  // Root domain itself — short format URL, no subdomain
+  if (hostname === rootDomain) {
     return null;
   }
 
-  return parts[0];
+  // A subdomain of our root domain
+  // "step.qrurl.dev" → remove ".qrurl.dev" → "step"
+  if (hostname.endsWith(`.${rootDomain}`)) {
+    return hostname.slice(0, hostname.length - rootDomain.length - 1);
+  }
+
+  // Doesn't match our domain — not our request
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -317,7 +330,6 @@ async function trackClick(
   env: Env,
   urlId: number
 ): Promise<void> {
-  // Extract the raw data from the request
   const referrer = cleanReferrer(request.headers.get("Referer"));
   const country = extractCountry(request);
   const deviceType = parseDeviceType(request.headers.get("User-Agent"));
