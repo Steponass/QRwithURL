@@ -152,12 +152,11 @@ function UrlSelector({
   }
 
   return (
-    <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-      <span style={{ fontWeight: "bold" }}>Select URL</span>
+    <label>
+      <span>Select URL</span>
       <select
         value={selectedUrlId}
         onChange={handleChange}
-        style={{ padding: "0.5rem", fontSize: "1rem" }}
       >
         {urls.map((url) => (
           <option key={url.id} value={url.id}>
@@ -189,8 +188,8 @@ function UrlTypeSelector({
       <legend>
         URL to encode in QR
       </legend>
-      <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-        <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+      <div>
+        <label>
           <input
             type="radio"
             name="urlType"
@@ -200,7 +199,7 @@ function UrlTypeSelector({
           />
           <span>
             Original URL
-            <span style={{ color: "#6b7280", fontSize: "0.875rem" }}>
+            <span>
               {" "}— direct link, not tracked
             </span>
           </span>
@@ -261,23 +260,22 @@ function ColorPickers({
   onBackgroundChange: (color: string) => void;
 }) {
   return (
-    <div style={{ display: "flex", gap: "1.5rem" }}>
-      <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+    <div>
+      <label>
         <span>Foreground</span>
         <input
           type="color"
           value={foreground}
           onChange={(e) => onForegroundChange(e.target.value)}
-          style={{ width: "60px", height: "36px", cursor: "pointer" }}
         />
       </label>
-      <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-        <span style={{ fontWeight: "bold" }}>Background</span>
+      <label>
+        <span>Background</span>
         <input
           type="color"
           value={background}
           onChange={(e) => onBackgroundChange(e.target.value)}
-          style={{ width: "60px", height: "36px", cursor: "pointer" }}
+          style={{cursor: "pointer"}}
         />
       </label>
     </div>
@@ -298,11 +296,10 @@ function SizeSelector({
   return (
     <fieldset>
       <legend>Size</legend>
-      <div style={{ display: "flex", gap: "1rem" }}>
+      <div>
         {SIZE_OPTIONS.map((option) => (
           <label
             key={option.value}
-            style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}
           >
             <input
               type="radio"
@@ -335,11 +332,10 @@ function ErrorCorrectionSelector({
       <legend>
         Error Correction
       </legend>
-      <div style={{ display: "flex", gap: "1rem" }}>
+      <div>
         {ERROR_CORRECTION_OPTIONS.map((option) => (
           <label
             key={option.value}
-            style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}
           >
             <input
               type="radio"

@@ -5,12 +5,14 @@
  * with a prompt to create their first URL.
  *
  * Each item is rendered by UrlListItem, which handles its own
- * copy and delete interactions via useFetcher.
+ * copy and delete interactions via useFetcher. QR codes associated
+ * with each URL are displayed nested beneath their URL item.
  */
 
 import { Link } from "react-router";
 import { UrlListItem } from "~/components/UrlListItem";
 import type { UrlRecord } from "~/components/UrlListItem";
+import type { QrRecord } from "~/components/QR/QrListItem";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -20,13 +22,14 @@ interface UrlListProps {
   urls: UrlRecord[];
   urlCount: number;
   maxUrls: number;
+  qrCodes: QrRecord[];
 }
 
 // ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 
-export function UrlList({ urls, urlCount, maxUrls }: UrlListProps) {
+export function UrlList({ urls, urlCount, maxUrls, qrCodes }: UrlListProps) {
   return (
     <section style={{ marginTop: "1.5rem" }}>
       <div
@@ -46,9 +49,10 @@ export function UrlList({ urls, urlCount, maxUrls }: UrlListProps) {
         <UrlListEmpty />
       ) : (
         <ul>
-          {urls.map((url) => (
-            <UrlListItem key={url.id} url={url} />
-          ))}
+          {urls.map((url) => {
+            const urlQrCodes = qrCodes.filter((qr) => qr.url_id === url.id);
+            return <UrlListItem key={url.id} url={url} qrCodes={urlQrCodes} />;
+          })}
         </ul>
       )}
 

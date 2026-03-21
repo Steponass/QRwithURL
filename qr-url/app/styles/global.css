@@ -1,0 +1,20 @@
+/* Clerk User Button */
+.cl-rootBox .cl-userButton-root .cl-internal-friqq3 {
+  padding-block: 4px;
+  margin-block: 4px;
+  max-height: 20px;
+}
+
+main {
+  width: min(1024px, 98%);
+  margin-inline: auto;
+}
+
+section {
+  background-color: hsl(0, 0%, 95%);
+}
+
+.QrListItem {
+  max-width: 400px;
+  border: none;
+}

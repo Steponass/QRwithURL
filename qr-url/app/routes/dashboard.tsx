@@ -12,7 +12,6 @@ import { data } from "react-router";
 import type { Route } from "./+types/dashboard";
 import { SubdomainPicker } from "~/components/SubdomainPicker";
 import { UrlList } from "~/components/UrlList";
-import { QrList } from "~/components/QR/QRList";
 import {
   validateSubdomainFormat,
   cleanSubdomain,
@@ -20,10 +19,11 @@ import {
 import { deleteQrImage } from "~/lib/qr-storage";
 import { fetchTotalClicksForUser } from "~/lib/analytics-queries";
 import { getTierPermissions } from "~/lib/tier";
+import styles from "./dashboard.module.css";
 
 //
 // Loader (server-side)
-// 
+//
 
 export async function loader(args: Route.LoaderArgs) {
   const { userId } = await getAuth(args);
@@ -62,7 +62,7 @@ export async function loader(args: Route.LoaderArgs) {
       `SELECT id, shortcode, original_url, subdomain, created_at
        FROM urls
        WHERE user_id = ?
-       ORDER BY created_at DESC`
+       ORDER BY created_at DESC`,
     )
     .bind(userId)
     .all<{
@@ -80,7 +80,7 @@ export async function loader(args: Route.LoaderArgs) {
       `SELECT id, url_id, url_type, encoded_url, storage_path, customization, created_at
        FROM qr_codes
        WHERE user_id = ?
-       ORDER BY created_at DESC`
+       ORDER BY created_at DESC`,
     )
     .bind(userId)
     .all<{
@@ -110,9 +110,9 @@ export async function loader(args: Route.LoaderArgs) {
   };
 }
 
-// 
+//
 // Action (server-side)
-// 
+//
 
 /**
  * Actions are dispatched by the "intent" field in the form data.
@@ -128,7 +128,7 @@ export async function action(args: Route.ActionArgs) {
   if (!userId) {
     return data(
       { intent: "unknown", success: false, error: "Not authenticated." },
-      { status: 401 }
+      { status: 401 },
     );
   }
 
@@ -149,13 +149,13 @@ export async function action(args: Route.ActionArgs) {
 
   return data(
     { intent: "unknown", success: false, error: "Unknown action." },
-    { status: 400 }
+    { status: 400 },
   );
 }
 
-// 
+//
 // Action handlers
-// 
+//
 
 /**
  * Handles the "set-subdomain" intent.
@@ -164,14 +164,18 @@ export async function action(args: Route.ActionArgs) {
 async function handleSetSubdomain(
   args: Route.ActionArgs,
   userId: string,
-  formData: FormData
+  formData: FormData,
 ) {
   const rawSubdomain = formData.get("subdomain") as string;
 
   if (!rawSubdomain) {
     return data(
-      { intent: "set-subdomain", success: false, error: "Subdomain is required." },
-      { status: 400 }
+      {
+        intent: "set-subdomain",
+        success: false,
+        error: "Subdomain is required.",
+      },
+      { status: 400 },
     );
   }
 
@@ -182,7 +186,7 @@ async function handleSetSubdomain(
   if (!validation.isValid) {
     return data(
       { intent: "set-subdomain", success: false, error: validation.error },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -190,7 +194,7 @@ async function handleSetSubdomain(
 
   const existingRow = await db
     .prepare(
-      "SELECT clerk_user_id FROM users WHERE subdomain = ? AND clerk_user_id != ?"
+      "SELECT clerk_user_id FROM users WHERE subdomain = ? AND clerk_user_id != ?",
     )
     .bind(cleaned, userId)
     .first<{ clerk_user_id: string }>();
@@ -202,7 +206,7 @@ async function handleSetSubdomain(
         success: false,
         error: `"${cleaned}" is already taken.`,
       },
-      { status: 409 }
+      { status: 409 },
     );
   }
 
@@ -210,7 +214,7 @@ async function handleSetSubdomain(
     .prepare(
       `INSERT INTO users (clerk_user_id, subdomain)
        VALUES (?, ?)
-       ON CONFLICT (clerk_user_id) DO UPDATE SET subdomain = ?`
+       ON CONFLICT (clerk_user_id) DO UPDATE SET subdomain = ?`,
     )
     .bind(userId, cleaned, cleaned)
     .run();
@@ -235,14 +239,14 @@ async function handleSetSubdomain(
 async function handleDeleteUrl(
   args: Route.ActionArgs,
   userId: string,
-  formData: FormData
+  formData: FormData,
 ) {
   const urlId = formData.get("urlId") as string;
 
   if (!urlId) {
     return data(
       { intent: "delete-url", success: false, error: "URL ID is required." },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -265,7 +269,7 @@ async function handleDeleteUrl(
   if (!urlOwnership) {
     return data(
       { intent: "delete-url", success: false, error: "URL not found." },
-      { status: 404 }
+      { status: 404 },
     );
   }
 
@@ -278,7 +282,7 @@ async function handleDeleteUrl(
    */
   const qrRows = await db
     .prepare(
-      "SELECT storage_path FROM qr_codes WHERE url_id = ? AND user_id = ?"
+      "SELECT storage_path FROM qr_codes WHERE url_id = ? AND user_id = ?",
     )
     .bind(numericUrlId, userId)
     .all<{ storage_path: string }>();
@@ -312,14 +316,14 @@ async function handleDeleteUrl(
 async function handleDeleteQr(
   args: Route.ActionArgs,
   userId: string,
-  formData: FormData
+  formData: FormData,
 ) {
   const qrId = formData.get("qrId") as string;
 
   if (!qrId) {
     return data(
       { intent: "delete-qr", success: false, error: "QR ID is required." },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -338,7 +342,7 @@ async function handleDeleteQr(
   if (!qrRow) {
     return data(
       { intent: "delete-qr", success: false, error: "QR code not found." },
-      { status: 404 }
+      { status: 404 },
     );
   }
 
@@ -353,54 +357,67 @@ async function handleDeleteQr(
   return data({ intent: "delete-qr", success: true });
 }
 
-// 
+//
 // Component (client-side)
-// 
+//
 
 export default function Dashboard({ loaderData }: Route.ComponentProps) {
   if (!loaderData.authenticated) {
     return <RedirectToSignIn />;
   }
 
-  const { subdomain, urlCount, urls, qrCodes, qrCount, totalClicks, maxUrls, maxQrCodes } = loaderData;
+  const {
+    subdomain,
+    urlCount,
+    urls,
+    qrCodes,
+    qrCount,
+    totalClicks,
+    maxUrls,
+    maxQrCodes,
+  } = loaderData;
 
   const { isLoaded, user } = useUser();
 
   if (!isLoaded) {
-    return <p>Loading...</p>;
+    return (
+      <section>
+        <p>Loading...</p>
+      </section>
+    );
   }
 
   return (
-    <div style={{ padding: "2rem", maxWidth: "600px" }}>
-      <h1>Dashboard</h1>
+    <section className={styles.dashboard}>
+      <div className={styles.dashboard_header_and_subdomainpicker}>
+        <div>
+          <h1>
+            Hey,{" "}
+            {user?.username ?? user?.emailAddresses[0]?.emailAddress ?? "there"}
+            !
+          </h1>
 
-      <p>
-        Welcome, {user?.firstName ?? user?.emailAddresses[0]?.emailAddress ?? "there"}!
-      </p>
+          {totalClicks > 0 && (
+            <p>
+              Your links have received{" "}
+              <strong>{totalClicks.toLocaleString("en-US")}</strong> total click
+              {totalClicks !== 1 ? "s" : ""}.
+            </p>
+          )}
+        </div>
 
-      {totalClicks > 0 && (
-        <p>
-          Your links have received{" "}
-          <strong>{totalClicks.toLocaleString("en-US")}</strong> total click
-          {totalClicks !== 1 ? "s" : ""}.
-        </p>
-      )}
-
-      <SubdomainPicker 
-      currentSubdomain={subdomain} 
-      brandedQrCount={qrCount} />
+        <SubdomainPicker
+          currentSubdomain={subdomain}
+          brandedQrCount={qrCount}
+        />
+      </div>
 
       <UrlList
         urls={urls}
         urlCount={urlCount}
         maxUrls={maxUrls}
-      />
-
-      <QrList
         qrCodes={qrCodes}
-        qrCount={qrCount}
-        maxQrCodes={maxQrCodes}
       />
-    </div>
+    </section>
   );
 }

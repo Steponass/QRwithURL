@@ -12,26 +12,16 @@
 import { useState } from "react";
 import { useFetcher } from "react-router";
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
 interface QrPreviewProps {
   /** Base64 data URI of the QR PNG */
   dataUrl: string;
-  /** The URL encoded in the QR code */
   encodedUrl: string;
-  /** URL type selected by the user */
   urlType: string;
   /** Database ID of the source URL */
   urlId: number;
-  /** JSON string of customization settings */
   customizationJson: string;
 }
 
-// ---------------------------------------------------------------------------
-// Main component
-// ---------------------------------------------------------------------------
 
 export function QrPreview({
   dataUrl,
@@ -70,24 +60,14 @@ export function QrPreview({
   }
 
   return (
-    <div
-      style={{
-        marginTop: "1.5rem",
-        padding: "1rem",
-        border: "1px solid #e5e7eb",
-        borderRadius: "8px",
-      }}
-    >
-      <p>Preview</p>
-
+    <div>
       {/* --- QR Image --- */}
-      <div style={{ textAlign: "center", marginBottom: "1rem" }}>
+      <div>
         <img
           src={dataUrl}
           alt={`QR code for ${encodedUrl}`}
           style={{
-            maxWidth: "256px",
-            width: "100%",
+            maxWidth: "192px",
             imageRendering: "pixelated",
           }}
         />
@@ -98,14 +78,7 @@ export function QrPreview({
       </p>
 
       {/* --- Actions --- */}
-      <div
-        style={{
-          display: "flex",
-          gap: "0.75rem",
-          justifyContent: "center",
-          marginTop: "1rem",
-        }}
-      >
+      <div>
         <button
           type="button"
           onClick={handleDownload}

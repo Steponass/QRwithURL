@@ -17,7 +17,7 @@ import type { Route } from "./+types/dashboard.create";
 import {
   UrlCreationForm,
   UrlCreatedSuccess,
-} from "~/components/UrlCreationPrompt";
+} from "~/components/UrlCreationForm";
 import { validateUrl } from "~/lib/url-validation";
 import {
   generateUniqueShortcode,
@@ -25,6 +25,7 @@ import {
 } from "~/lib/shortcode";
 import { SITE_DOMAIN } from "~/lib/constants";
 import { getTierPermissions } from "~/lib/tier";
+import styles from "./dashboard.module.css";
 
 // ---------------------------------------------------------------------------
 // Action result types
@@ -291,21 +292,19 @@ export default function DashboardCreate({
   const isError = result?.success === false;
 
   return (
-    <div style={{ padding: "2rem", maxWidth: "600px" }}>
-      <Link to="/dashboard" style={{ color: "#2563eb" }}>
+    <section>
+      <div className={styles.UrlQrCreationHeader}>
+            <h1>Create Short URL</h1>
+      <Link to="/dashboard">
         &larr; Back to Dashboard
       </Link>
-
-      <h1 style={{ marginTop: "1rem" }}>Create Short URL</h1>
-
-      {/* Show success message if URL was just created */}
+</div>
       {isSuccess && (
         <UrlCreatedSuccess createdUrl={result.createdUrl} />
       )}
 
-      {/* Show server-side error if action failed */}
       {isError && (
-        <p style={{ color: "#dc2626", marginBottom: "1rem" }} role="alert">
+        <p role="alert">
           {result.error}
         </p>
       )}
@@ -315,6 +314,6 @@ export default function DashboardCreate({
         urlCount={urlCount}
         maxUrls={maxUrls}
       />
-    </div>
+    </section>
   );
 }

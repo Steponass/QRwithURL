@@ -33,11 +33,39 @@ import type { Route } from "./+types/root";
 import { rootAuthLoader } from "@clerk/react-router/ssr.server";
 import {
   ClerkProvider,
-  SignedIn,
-  SignedOut,
-  SignInButton,
-  UserButton,
 } from "@clerk/react-router";
+import "app/styles/css-reset.css"; 
+import "app/styles/fonts.css"; 
+import "app/styles/properties.css";
+import "app/styles/global.css";
+import Header from "./components/layout/Header";
+import Footer from "./components/layout/Footer";
+
+/**
+ * App component — the root of the React tree.
+ *
+ * ClerkProvider wraps everything here. It receives loaderData from
+ * rootAuthLoader, which contains the auth session state. All child
+ * routes can then use Clerk hooks (useUser, useAuth, etc.).
+ *
+ * The header with SignedIn/SignedOut is temporary — just for testing
+ * that auth works. We'll replace it with a proper layout later.
+ */
+export default function App({ loaderData }: Route.ComponentProps) {
+  return (
+    <ClerkProvider loaderData={loaderData}>
+        <Header />
+
+      <main>
+        <Outlet />
+      </main>
+      <Footer />
+
+    </ClerkProvider>
+  );
+}
+
+
 
 /**
  * Root loader — runs on every page load (server-side).
@@ -91,35 +119,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <Scripts />
       </body>
     </html>
-  );
-}
-
-/**
- * App component — the root of your React tree.
- *
- * ClerkProvider wraps everything here. It receives loaderData from
- * rootAuthLoader, which contains the auth session state. All child
- * routes can then use Clerk hooks (useUser, useAuth, etc.).
- *
- * The header with SignedIn/SignedOut is temporary — just for testing
- * that auth works. We'll replace it with a proper layout later.
- */
-export default function App({ loaderData }: Route.ComponentProps) {
-  return (
-    <ClerkProvider loaderData={loaderData}>
-      <header style={{ padding: "1rem", borderBottom: "1px solid #eee" }}>
-        <SignedOut>
-          <SignInButton />
-        </SignedOut>
-        <SignedIn>
-          <UserButton />
-        </SignedIn>
-      </header>
-
-      <main>
-        <Outlet />
-      </main>
-    </ClerkProvider>
   );
 }
 

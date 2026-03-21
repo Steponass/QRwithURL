@@ -1,0 +1,12 @@
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-8-12px);
+  padding-block: var(--space-12-16px);
+  padding-inline: var(--space-16-24px);
+  border-block-end: 1px solid black;
+}
+
+.signInButton {
+}

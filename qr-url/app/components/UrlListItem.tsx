@@ -14,6 +14,10 @@
 
 import { useState } from "react";
 import { useFetcher, Link } from "react-router";
+import { QrListItem } from "~/components/QR/QrListItem";
+import type { QrRecord } from "~/components/QR/QrListItem";
+import styles from "./UrlListItem.module.css"
+
 
 /**
  * The URL data shape as it comes from the dashboard loader.
@@ -37,14 +41,19 @@ const DISPLAY_DOMAIN = SITE_DOMAIN;
 const MAX_DISPLAY_URL_LENGTH = 50;
 
 
-export function UrlListItem({ url }: { url: UrlRecord }) {
+interface UrlListItemProps {
+  url: UrlRecord;
+  qrCodes: QrRecord[];
+}
+
+export function UrlListItem({ url, qrCodes }: UrlListItemProps) {
   const fullShortUrl = buildShortUrl(url.shortcode, url.subdomain);
   const truncatedOriginal = truncateUrl(url.original_url);
   const formattedDate = formatDate(url.created_at);
   const formatLabel = url.subdomain ? "branded" : "short";
 
   return (
-    <li>
+    <li className="UrlQrCard">
       {/* --- Short URL + Copy --- */}
       <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
         <code style={{ fontSize: "1rem" }}>{fullShortUrl}</code>
@@ -88,6 +97,15 @@ export function UrlListItem({ url }: { url: UrlRecord }) {
           <DeleteButton urlId={url.id} shortcode={url.shortcode} />
         </div>
       </div>
+
+      {/* --- Associated QR codes --- */}
+      {qrCodes.length > 0 && (
+        <ul style={{ listStyle: "none", padding: 0, marginTop: "0.5rem" }}>
+          {qrCodes.map((qrCode) => (
+            <QrListItem key={qrCode.id} qrCode={qrCode} />
+          ))}
+        </ul>
+      )}
     </li>
   );
 }
@@ -158,13 +176,11 @@ function DeleteButton({
           Delete "{shortcode}"? The shortcode becomes available to others.
         </span>
         <button
-          type="button"
           onClick={handleConfirm}
         >
           Yes, delete
         </button>
         <button
-          type="button"
           onClick={handleCancel}
         >
           Cancel
@@ -175,7 +191,6 @@ function DeleteButton({
 
   return (
     <button
-      type="button"
       onClick={handleDeleteClick}
     >
       Delete

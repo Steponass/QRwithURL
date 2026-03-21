@@ -14,7 +14,6 @@
  *
  * Why client-side generation?
  *   The `qrcode` npm package needs canvas to render PNGs.
- *   Cloudflare Workers don't have canvas. Browsers do.
  *   So we generate in the browser, then send the image to the server.
  */
 
@@ -36,6 +35,7 @@ import { uploadQrImage } from "~/lib/qr-storage";
 import { resolveShortestUrl } from "~/lib/qr-shortest";
 import { SITE_DOMAIN } from "~/lib/constants";
 import { getTierPermissions } from "~/lib/tier";
+import styles from "./dashboard.module.css";
 
 export async function loader(args: Route.LoaderArgs) {
   const { userId } = await getAuth(args);
@@ -375,21 +375,21 @@ export default function DashboardQrNew({ loaderData }: Route.ComponentProps) {
   }));
 
   return (
-    <div style={{ padding: "2rem", maxWidth: "600px" }}>
-      <Link to="/dashboard" style={{ color: "#2563eb" }}>
-        &larr; Back to Dashboard
-      </Link>
+    <section>
+      <div className={styles.UrlQrCreationHeader}>
+        <h1>Generate QR Code</h1>
 
-      <h1 style={{ marginTop: "1rem" }}>Generate QR Code</h1>
+        <Link to="/dashboard">&larr; Back to Dashboard</Link>
+      </div>
 
       {isAtLimit && (
-        <p style={{ color: "#dc2626", marginBottom: "1rem" }}>
-          You've reached the limit of {maxQrCodes} QR codes. Delete an existing
+        <p>
+          You've reached the limit of {maxQrCodes} QR codes. Delete some existing
           QR code to create a new one.
         </p>
       )}
 
-      <p style={{ color: "#6b7280", marginBottom: "1rem" }}>
+      <p>
         {qrCount} of {maxQrCodes} QR codes used
       </p>
 
@@ -402,11 +402,7 @@ export default function DashboardQrNew({ loaderData }: Route.ComponentProps) {
         />
       )}
 
-      {generateError && (
-        <p style={{ color: "#dc2626", marginTop: "1rem" }} role="alert">
-          {generateError}
-        </p>
-      )}
+      {generateError && <p role="alert">{generateError}</p>}
 
       {previewState && !isAtLimit && (
         <QrPreview
@@ -417,6 +413,6 @@ export default function DashboardQrNew({ loaderData }: Route.ComponentProps) {
           customizationJson={previewState.customizationJson}
         />
       )}
-    </div>
+    </section>
   );
 }

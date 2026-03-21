@@ -1,0 +1,31 @@
+.dashboard {
+  margin-block: var(--space-48-64px);
+}
+
+
+section {
+  margin-top: var(--space-48-64px);
+  max-width: min(800px, 95%);
+  margin-inline: auto;
+}
+
+.dashboard_header_and_subdomainpicker {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: var(--space-48px);
+  @media (max-width: 640px) {
+    flex-direction: column;
+    gap: var(--space-24-32px);
+  }
+}
+
+.UrlQrCreationHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* Why not? */
+input {
+  cursor: pointer;
+}

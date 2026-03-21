@@ -1,10 +1,10 @@
 /**
  * SubdomainPicker component.
  *
- * Two modes:
- *   1. "claim" — user has no subdomain yet, show input + submit
- *   2. "display" — user has a subdomain, show it with a "Change" button
- *      that switches to an inline edit form
+ * Three modes, all orchestrated from the top-level SubdomainPicker:
+ *   1. "claim"   — user has no subdomain yet (SubdomainClaimView)
+ *   2. "read"    — user has a subdomain, showing it with a "Change" button (SubdomainReadView)
+ *   3. "edit"    — user clicked "Change", inline edit form is visible (SubdomainEditView)
  *
  * Uses useFetcher instead of <Form> so the submission doesn't trigger
  * a full page navigation. The dashboard loader re-runs automatically
@@ -23,7 +23,8 @@ import {
   cleanSubdomain,
 } from "~/lib/subdomain-validation";
 import { SITE_DOMAIN } from "~/lib/constants";
-import { Modal } from "~/components/Modal";
+import { Modal } from "~/components/layout/Modal";
+import styles from "./SubdomainPicker.module.css";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -32,6 +33,26 @@ import { Modal } from "~/components/Modal";
 interface SubdomainPickerProps {
   currentSubdomain: string | null;
   /** Number of saved QR codes with url_type === 'branded'. */
+  brandedQrCount: number;
+}
+
+interface SubdomainClaimViewProps {
+  brandedQrCount: number;
+}
+
+interface SubdomainReadViewProps {
+  currentSubdomain: string;
+  onEditClick: () => void;
+}
+
+interface SubdomainEditViewProps {
+  currentSubdomain: string;
+  brandedQrCount: number;
+  onCancelEdit: () => void;
+}
+
+interface SubdomainFormProps {
+  currentSubdomain: string | null;
   brandedQrCount: number;
 }
 
@@ -54,87 +75,92 @@ export function SubdomainPicker({
   currentSubdomain,
   brandedQrCount,
 }: SubdomainPickerProps) {
-  if (currentSubdomain) {
+  const [isEditing, setIsEditing] = useState(false);
+
+  if (!currentSubdomain) {
+    return <SubdomainClaimView brandedQrCount={brandedQrCount} />;
+  }
+
+  if (isEditing) {
     return (
-      <SubdomainDisplay
+      <SubdomainEditView
         currentSubdomain={currentSubdomain}
         brandedQrCount={brandedQrCount}
+        onCancelEdit={() => setIsEditing(false)}
       />
     );
   }
 
   return (
-    <section>
+    <SubdomainReadView
+      currentSubdomain={currentSubdomain}
+      onEditClick={() => setIsEditing(true)}
+    />
+  );
+}
+
+// ---------------------------------------------------------------------------
+// View components
+// ---------------------------------------------------------------------------
+
+function SubdomainClaimView({ brandedQrCount }: SubdomainClaimViewProps) {
+  return (
+    <section className={styles.subdomain_section}>
       <h2>Subdomain</h2>
       <p>You haven't picked a subdomain yet.</p>
       <p>
         A subdomain lets you create branded short URLs like{" "}
         <strong>yourname.{SITE_DOMAIN}/link</strong>
       </p>
-      <SubdomainForm currentSubdomain={null} brandedQrCount={0} />
+      <SubdomainForm currentSubdomain={null} brandedQrCount={brandedQrCount} />
     </section>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Display mode (has subdomain, with edit toggle)
-// ---------------------------------------------------------------------------
-
-function SubdomainDisplay({
+function SubdomainReadView({
   currentSubdomain,
-  brandedQrCount,
-}: {
-  currentSubdomain: string;
-  brandedQrCount: number;
-}) {
-  const [isEditing, setIsEditing] = useState(false);
-
-  if (isEditing) {
-    return (
-      <section>
-        <h2>Edit Subdomain</h2>
-        <SubdomainForm
-          currentSubdomain={currentSubdomain}
-          brandedQrCount={brandedQrCount}
-        />
-        <button
-          type="button"
-          onClick={() => setIsEditing(false)}
-        >
-          Cancel
-        </button>
-      </section>
-    );
-  }
-
+  onEditClick,
+}: SubdomainReadViewProps) {
   return (
-    <section>
+    <div className={styles.subdomain_container}>
       <h2>Your Subdomain</h2>
       <p>
         <strong>{currentSubdomain}</strong>.{SITE_DOMAIN}
       </p>
-      <button
-        type="button"
-        onClick={() => setIsEditing(true)}
-        style={{ marginTop: "0.5rem", cursor: "pointer" }}
-      >
+      <button type="button" onClick={onEditClick}>
         Change subdomain
       </button>
-    </section>
+    </div>
+  );
+}
+
+function SubdomainEditView({
+  currentSubdomain,
+  brandedQrCount,
+  onCancelEdit,
+}: SubdomainEditViewProps) {
+  return (
+    <div className={styles.subdomain_container}>
+      <h2>Edit Subdomain</h2>
+      <SubdomainForm
+        currentSubdomain={currentSubdomain}
+        brandedQrCount={brandedQrCount}
+      />
+      <button type="button" onClick={onCancelEdit}>
+        Cancel
+      </button>
+    </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Form (shared between claim and edit modes)
+// Form component (shared between claim and edit views)
 // ---------------------------------------------------------------------------
 
 function SubdomainForm({
   currentSubdomain,
   brandedQrCount,
-}: {
-  currentSubdomain: string | null;
-  brandedQrCount: number;
-}) {
+}: SubdomainFormProps) {
   const fetcher = useFetcher<SubdomainActionData>();
   const [clientError, setClientError] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -227,7 +253,7 @@ function SubdomainForm({
       </Modal>
 
       <form onSubmit={handleSubmit}>
-        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+        <div>
           <input
             type="text"
             name="subdomain"
@@ -238,8 +264,8 @@ function SubdomainForm({
             disabled={isSubmitting}
           />
           <span>.{SITE_DOMAIN}</span>
-          <button type="submit" disabled={isSubmitting} style={{ cursor: "pointer" }}>
-            {isSubmitting ? "Saving..." : "Save"}
+          <button type="submit" disabled={isSubmitting}>
+            {isSubmitting ? "Saving…" : "Save"}
           </button>
         </div>
 

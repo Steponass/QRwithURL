@@ -1,0 +1,38 @@
+/* SPACING, RADIUS */
+:root {
+  --space-4px: 4px;
+  --space-8px: 8px;
+  --space-12px: 12px;
+  --space-16px: 16px;
+  --space-24px: 24px;
+  --space-32px: 32px;
+  --space-48px: 48px;
+  --space-64px: 64px;
+  --space-96px: 96px;
+
+  /* Fluid Spacing: https://utopia.fyi/space/calculator/?c=360,16,1.25,1920,16,1.333,5,2,&s=0.75|0.5|0.25,1.5|2|3|4|6,s-l&g=s,l,xl,12 */
+  --space-4-8px: clamp(4px, 3.0769px + 0.2564vw, 8px);
+  --space-8-12px: clamp(8px, 7.0769px + 0.2564vw, 12px);
+  --space-12-16px: clamp(12px, 11.0769px + 0.2564vw, 16px);
+  --space-16-24px: clamp(16px, 14.1538px + 0.5128vw, 24px);
+  --space-24-32px: clamp(24px, 22.1538px + 0.5128vw, 32px);
+  --space-32-48px: clamp(32px, 28.3077px + 1.0256vw, 48px);
+  --space-48-64px: clamp(48px, 44.1165px + 1.0356vw, 64px);
+  --space-64-96px: clamp(64px, 56.6154px + 2.0513vw, 96px);
+
+  /* BORDER RADIUS */
+  --radius-2px: 2px;
+  --radius-4px: 4px;
+  --radius-8px: 8px;
+  --radius-16px: 16px;
+}
+
+/* Transitions */
+:root {
+  --transition-hover-quick: all 0.1s ease-in-out; 
+  --transition-hover:       all 0.2s ease-in-out;
+
+}
+
+
+/* Keyframes? */
